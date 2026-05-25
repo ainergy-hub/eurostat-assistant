@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fetch Eurostat Data"
+  short_description: "Find and fetch Eurostat statistics"
+  default_prompt: "Use $fetch-eurostat-data to find the relevant Eurostat dataset and answer my data question."
