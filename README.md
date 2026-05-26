@@ -46,3 +46,36 @@ This skill uses public Eurostat endpoints and does not require an API key:
 - Statistics API: `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{dataset_code}`
 - Table of contents: `https://ec.europa.eu/eurostat/api/dissemination/catalogue/toc/txt?lang=en`
 
+## E2B Chat App
+
+This repository also includes a small FastAPI chat UI that runs a Eurostat-capable agent inside an E2B sandbox for each user question.
+
+### Setup
+
+```bash
+uv sync
+cp .env.example .env
+```
+
+Add your keys to `.env`, then export them before running the app:
+
+```bash
+export E2B_API_KEY=your_e2b_api_key
+export OPENROUTER_API_KEY=your_openrouter_api_key
+export OPENROUTER_MODEL=openai/gpt-4.1-mini
+```
+
+### Run
+
+```bash
+uv run uvicorn app.main:app --reload --port 8000
+```
+
+Open `http://127.0.0.1:8000`.
+
+### How It Works
+
+- The browser posts chat messages to the FastAPI `/api/chat` endpoint.
+- The backend creates an E2B sandbox and writes the local `SKILL.md`, `scripts/eurostat_api.py`, and sandbox agent script into it.
+- The sandbox agent calls OpenRouter's OpenAI-compatible chat completions endpoint with tool calling to search Eurostat metadata, inspect dataset dimensions, fetch bounded slices, and return the final answer.
+- The UI renders only the final answer returned by the sandboxed agent.

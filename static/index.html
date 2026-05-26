@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eurostat Sandbox Chat</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="header">
+        <div>
+          <p class="eyebrow">E2B sandbox agent</p>
+          <h1>Eurostat Chat</h1>
+        </div>
+        <div class="status" id="status">Checking keys...</div>
+      </section>
+
+      <section class="chat" id="chat">
+        <article class="message assistant">
+          <div class="bubble">
+            Ask a Eurostat question, for example: "What is Germany's population trend over the last 5 years?"
+          </div>
+        </article>
+      </section>
+
+      <form class="composer" id="composer">
+        <textarea
+          id="prompt"
+          name="prompt"
+          rows="2"
+          placeholder="Ask for Eurostat data..."
+          autocomplete="off"
+          required
+        ></textarea>
+        <button type="submit" id="send">Send</button>
+      </form>
+    </main>
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
