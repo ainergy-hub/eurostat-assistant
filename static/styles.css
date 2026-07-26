@@ -64,6 +64,94 @@ body {
   line-height: 1.6;
 }
 
+.app-lock {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  background:
+    linear-gradient(rgba(245, 245, 240, 0.94), rgba(245, 245, 240, 0.98)),
+    radial-gradient(circle, var(--color-border) 1px, transparent 1px);
+  background-size: auto, 24px 24px;
+  padding: var(--space-5);
+}
+
+.lock-card {
+  width: min(100%, 480px);
+  border: var(--border-hairline);
+  border-top: 3px solid var(--color-accent);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-flat);
+  padding: clamp(28px, 6vw, 52px);
+}
+
+.lock-mark {
+  width: 42px;
+  height: 42px;
+  display: block;
+  border: 1px solid var(--color-border);
+  background:
+    linear-gradient(90deg, transparent 45%, var(--color-panel) 45% 55%, transparent 55%),
+    linear-gradient(transparent 45%, var(--color-panel) 45% 55%, transparent 55%),
+    var(--color-accent);
+  margin-bottom: var(--space-8);
+}
+
+.lock-card h1 {
+  max-width: 9ch;
+  font-size: clamp(2.5rem, 9vw, 4rem);
+}
+
+.lock-copy {
+  margin: var(--space-5) 0 var(--space-6);
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+}
+
+.lock-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.lock-form label {
+  color: var(--color-text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.lock-form input {
+  width: 100%;
+  min-height: 50px;
+  border: var(--border-hairline);
+  background: #fff;
+  color: var(--color-text-primary);
+  padding: 0 var(--space-4);
+}
+
+.lock-form input:focus {
+  border-color: var(--color-accent);
+  outline: 1px solid var(--color-accent);
+}
+
+.lock-form .send-button {
+  width: 100%;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+}
+
+.lock-error {
+  border-left: 2px solid var(--color-error);
+  background: var(--color-error-soft);
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  color: var(--color-error);
+  font-size: 0.7rem;
+}
+
 button,
 textarea,
 input {
@@ -490,7 +578,8 @@ th {
   text-transform: uppercase;
 }
 
-.download-log-button {
+.download-log-button,
+.lock-app-button {
   min-height: 34px;
   display: inline-flex;
   align-items: center;
@@ -506,8 +595,13 @@ th {
   text-transform: uppercase;
 }
 
-.download-log-button:hover {
+.download-log-button:hover,
+.lock-app-button:hover {
   border-color: var(--color-text-primary);
+}
+
+.lock-app-button {
+  background: transparent;
 }
 
 .download-log-button:disabled {
@@ -1500,7 +1594,8 @@ footer a:hover {
     display: none;
   }
 
-  .download-log-button > span:first-child {
+  .download-log-button > span:first-child,
+  .lock-app-button > span:first-child {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1509,7 +1604,8 @@ footer a:hover {
     white-space: nowrap;
   }
 
-  .download-log-button {
+  .download-log-button,
+  .lock-app-button {
     width: 34px;
     min-height: 34px;
     justify-content: center;

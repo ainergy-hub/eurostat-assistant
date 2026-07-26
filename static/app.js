@@ -11,8 +11,15 @@ import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 const PAGE_SIZE = 12;
 const MAX_CHATS = 30;
 const STORAGE_KEY = "eurostat-lens-chats-v1";
-const APP_VERSION = "0.2.0";
+const APP_VERSION = "0.3.0";
 
+const appLayout = document.querySelector("#app-layout");
+const appLock = document.querySelector("#app-lock");
+const appLockForm = document.querySelector("#app-lock-form");
+const appLockPassword = document.querySelector("#app-lock-password");
+const appLockError = document.querySelector("#app-lock-error");
+const appUnlockButton = document.querySelector("#app-unlock-button");
+const lockAppButton = document.querySelector("#lock-app");
 const chat = document.querySelector("#chat");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
@@ -42,6 +49,45 @@ const downloadChatLogButton = document.querySelector("#download-chat-log");
 let state = loadState();
 let inFlightChatId = null;
 let currentToolCalls = [];
+let lockEnabled = false;
+
+function showAppLock(message = "") {
+  appLayout.inert = true;
+  appLayout.hidden = true;
+  appLock.hidden = false;
+  document.body.classList.remove("app-unlocked");
+  appLockError.textContent = message;
+  appLockError.hidden = !message;
+  appLockPassword.value = "";
+  window.setTimeout(() => appLockPassword.focus(), 0);
+}
+
+function showApp() {
+  appLayout.inert = false;
+  appLayout.hidden = false;
+  appLock.hidden = true;
+  document.body.classList.add("app-unlocked");
+  lockAppButton.hidden = !lockEnabled;
+  promptInput.focus();
+}
+
+async function checkAuth() {
+  try {
+    const response = await fetch("/api/auth/status", { cache: "no-store" });
+    if (!response.ok) throw new Error("The app could not check the lock status.");
+    const data = await response.json();
+    lockEnabled = Boolean(data.lock_enabled);
+    if (!data.authenticated) {
+      showAppLock();
+      return false;
+    }
+    showApp();
+    return true;
+  } catch {
+    showAppLock("The backend is unavailable. Start the app and try again.");
+    return false;
+  }
+}
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -186,6 +232,9 @@ async function streamChat(payload, onEvent) {
   });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      showAppLock("Your app session expired. Enter the password again.");
+    }
     throw new Error(data.detail || "The agent request failed.");
   }
   if (!response.body) throw new Error("The browser could not read the live agent response.");
@@ -736,6 +785,10 @@ function renderWorkspace() {
 async function checkHealth() {
   try {
     const response = await fetch("/api/health");
+    if (response.status === 401) {
+      showAppLock("Your app session expired. Enter the password again.");
+      return;
+    }
     const data = await response.json();
     if (data.agent_ready) {
       statusBadge.textContent = "Agent ready";
@@ -749,6 +802,40 @@ async function checkHealth() {
     statusWrap.className = "status-wrap error";
   }
 }
+
+appLockForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const password = appLockPassword.value;
+  if (!password) return;
+
+  appUnlockButton.disabled = true;
+  appLockError.hidden = true;
+  try {
+    const response = await fetch("/api/auth/unlock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || "The app could not be unlocked.");
+    lockEnabled = Boolean(data.lock_enabled);
+    showApp();
+    renderWorkspace();
+    await checkHealth();
+  } catch (error) {
+    showAppLock(error instanceof Error ? error.message : "The app could not be unlocked.");
+  } finally {
+    appUnlockButton.disabled = false;
+  }
+});
+
+lockAppButton.addEventListener("click", async () => {
+  try {
+    await fetch("/api/auth/lock", { method: "POST" });
+  } finally {
+    showAppLock();
+  }
+});
 
 composer.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -882,5 +969,11 @@ window.addEventListener("storage", (event) => {
   renderWorkspace();
 });
 
-renderWorkspace();
-checkHealth();
+async function initializeApp() {
+  if (await checkAuth()) {
+    renderWorkspace();
+    await checkHealth();
+  }
+}
+
+initializeApp();

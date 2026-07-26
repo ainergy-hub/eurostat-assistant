@@ -4,7 +4,12 @@ import json
 import unittest
 from unittest.mock import patch
 
-from app.main import ChatRequest, ChatResponse
+from app.main import (
+    ChatRequest,
+    ChatResponse,
+    _session_token,
+    _valid_session_token,
+)
 from app.sandbox_agent import (
     MAX_EVENT_PREVIEW_CHARS,
     MAX_TOOL_CALLS,
@@ -85,6 +90,26 @@ class StructuredResultTests(unittest.TestCase):
                 ],
             },
         }
+
+    def test_app_lock_session_token_is_signed_and_expires(self) -> None:
+        token = _session_token("correct horse battery staple", expires_at=1_000)
+
+        self.assertTrue(
+            _valid_session_token(
+                token,
+                "correct horse battery staple",
+                now=999,
+            )
+        )
+        self.assertFalse(_valid_session_token(token, "wrong password", now=999))
+        self.assertFalse(_valid_session_token(token, "correct horse battery staple", now=1_000))
+        self.assertFalse(
+            _valid_session_token(
+                f"{token}tampered",
+                "correct horse battery staple",
+                now=999,
+            )
+        )
 
     def test_builds_chart_table_and_provenance(self) -> None:
         result = build_structured_result(self.fetch_record)

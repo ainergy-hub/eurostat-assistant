@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import queue
 import threading
+import time
 from pathlib import Path
 from typing import Any, Literal
 
 import anyio
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -21,6 +24,55 @@ STATIC_DIR = ROOT / "static"
 
 app = FastAPI(title="Eurostat Lens")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+SESSION_COOKIE = "eurostat_lens_session"
+SESSION_TTL_SECONDS = 12 * 60 * 60
+
+
+def _app_password() -> str:
+    return os.getenv("APP_PASSWORD", "")
+
+
+def _session_token(password: str, expires_at: int) -> str:
+    payload = str(expires_at)
+    signature = hmac.new(
+        password.encode("utf-8"),
+        f"eurostat-lens:{payload}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{payload}.{signature}"
+
+
+def _valid_session_token(token: str | None, password: str, now: int | None = None) -> bool:
+    if not token or not password:
+        return False
+    try:
+        expires_text, _ = token.split(".", 1)
+        expires_at = int(expires_text)
+    except (TypeError, ValueError):
+        return False
+    if expires_at <= (int(time.time()) if now is None else now):
+        return False
+    expected = _session_token(password, expires_at)
+    return hmac.compare_digest(token, expected)
+
+
+def _request_is_unlocked(request: Request) -> bool:
+    password = _app_password()
+    return not password or _valid_session_token(request.cookies.get(SESSION_COOKIE), password)
+
+
+@app.middleware("http")
+async def require_app_unlock(request: Request, call_next):
+    path = request.url.path
+    is_public = not path.startswith("/api/") or path.startswith("/api/auth/")
+    if is_public or _request_is_unlocked(request):
+        return await call_next(request)
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "App is locked. Enter the app password to continue."},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def _model_name() -> str:
@@ -76,6 +128,10 @@ class ChatRequest(BaseModel):
     context_result: DataResult | None = None
 
 
+class UnlockRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=512)
+
+
 class ToolCallDetail(BaseModel):
     id: str
     index: int = Field(ge=1)
@@ -96,6 +152,50 @@ class ChatResponse(BaseModel):
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request) -> dict[str, bool]:
+    lock_enabled = bool(_app_password())
+    return {
+        "lock_enabled": lock_enabled,
+        "authenticated": not lock_enabled or _request_is_unlocked(request),
+    }
+
+
+@app.post("/api/auth/unlock")
+def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
+    password = _app_password()
+    if not password:
+        return JSONResponse({"authenticated": True, "lock_enabled": False})
+    if not hmac.compare_digest(credentials.password.encode("utf-8"), password.encode("utf-8")):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Incorrect password."},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    expires_at = int(time.time()) + SESSION_TTL_SECONDS
+    response = JSONResponse({"authenticated": True, "lock_enabled": True})
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=_session_token(password, expires_at),
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="strict",
+        path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.post("/api/auth/lock")
+def lock() -> JSONResponse:
+    response = JSONResponse({"authenticated": False, "lock_enabled": bool(_app_password())})
+    response.delete_cookie(SESSION_COOKIE, path="/", samesite="strict")
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/health")

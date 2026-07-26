@@ -34,7 +34,7 @@ The current scope does not include:
 - arbitrary joins or calculations across multiple datasets;
 - maps, dashboards, or model-authored custom visualizations;
 - accounts, cloud synchronization, shared investigations, or versioned historical snapshots;
-- production controls such as authentication, rate limiting, caching, monitoring, or usage budgets.
+- production controls such as user accounts, rate limiting, caching, monitoring, or usage budgets.
 
 Eurostat publishes the latest version of each dataset through its public APIs. The data endpoints do
 not require an API key; the optional web app requires E2B and OpenRouter credentials to run its
@@ -102,9 +102,13 @@ Add your credentials to `.env`:
 E2B_API_KEY=your_e2b_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=openai/gpt-4.1-mini
+APP_PASSWORD=choose-a-strong-password
 ```
 
 `OPENROUTER_MODEL` is optional and defaults to `openai/gpt-4.1-mini`.
+`APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
+session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
+Leave `APP_PASSWORD` unset only when the app is running in an already trusted environment.
 
 Start the app:
 
@@ -146,7 +150,10 @@ reported values.
 ### HTTP endpoints
 
 - `GET /`: web interface.
-- `GET /api/health`: service and agent-credential readiness.
+- `GET /api/auth/status`: app-lock status.
+- `POST /api/auth/unlock`: unlock the app with `APP_PASSWORD`.
+- `POST /api/auth/lock`: clear the current app session.
+- `GET /api/health`: service and agent-credential readiness (requires an unlocked session).
 - `POST /api/chat`: validated, non-streaming chat response.
 - `POST /api/chat/stream`: newline-delimited status, tool-call, result, and error events.
 

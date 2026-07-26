@@ -12,7 +12,34 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="app-layout">
+    <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
+      <div class="lock-card">
+        <span class="lock-mark" aria-hidden="true"></span>
+        <p class="eyebrow">Private workspace</p>
+        <h1 id="app-lock-title">Unlock Eurostat Lens</h1>
+        <p class="lock-copy">
+          Enter the app password to open your investigations and use the Eurostat agent.
+        </p>
+        <form class="lock-form" id="app-lock-form">
+          <label for="app-lock-password">App password</label>
+          <input
+            id="app-lock-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            maxlength="512"
+            required
+          />
+          <button class="send-button" id="app-unlock-button" type="submit">
+            <span>Unlock app</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+        <p class="lock-error" id="app-lock-error" role="alert" hidden></p>
+      </div>
+    </section>
+
+    <div class="app-layout" id="app-layout" inert hidden>
       <aside class="sidebar" id="sidebar" aria-label="Investigations">
         <div class="sidebar-header">
           <a class="brand" href="/" aria-label="Eurostat Lens home">
@@ -67,6 +94,10 @@
             </div>
           </div>
           <div class="topbar-meta">
+            <button class="lock-app-button" id="lock-app" type="button" hidden>
+              <span>Lock app</span>
+              <span aria-hidden="true">⌁</span>
+            </button>
             <button
               class="download-log-button"
               id="download-chat-log"
