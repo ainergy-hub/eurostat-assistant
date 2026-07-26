@@ -21,7 +21,10 @@ Eurostat Lens can:
 - fetch and flatten filtered JSON-stat 2.0 observations;
 - preserve the dataset code, title, applied filters, update date, flags, and reproducible API URL;
 - return up to 500 observations in a sortable, filterable table with CSV export;
-- render line charts, horizontal or vertical bar charts, and scatter plots;
+- select and render line, area, grouped/stacked/normalized bar, dot, scatter/bubble,
+  heatmap, histogram, and box-plot charts;
+- safely modify charts with sorting, top-N filtering, orientation, labels, linear
+  trendlines, zero-baseline control, and linear or logarithmic scales;
 - pair two filtered measures by shared geography/period keys for correlation scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
 - perform bounded candidate discovery before asking about ambiguous measures and limit repeated searches, inspections, and fetches;
@@ -45,6 +48,7 @@ sandboxed agent.
 - `SKILL.md`: reusable Eurostat agent workflow and answering rules.
 - `scripts/eurostat_api.py`: standard-library search, dimensions, and fetch CLI.
 - `references/eurostat-api.md`: API patterns and troubleshooting notes.
+- `references/chart-selection.md`: chart-purpose matrix and safe modification rules.
 - `agents/openai.yaml`: Codex skill display metadata.
 - `app/sandbox_agent.py`: allow-listed tool-calling agent executed inside E2B.
 - `app/e2b_agent.py`: E2B lifecycle, event streaming, and result handling.
@@ -147,8 +151,8 @@ public so Railway can verify a locked deployment, but it exposes only service re
 1. The browser sends a question, up to six recent messages, an extractive summary of older
    messages, and the most recent structured chart result to `POST /api/chat/stream`.
 2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
-3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
-   and paired scatter composition.
+3. The model can use five allow-listed tools: dataset search, dimension inspection, bounded fetch,
+   paired scatter composition, and validated chart configuration.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
 5. The host preserves the latest fetched slice as structured rows and provenance, validates any
    model-selected chart fields, and derives a safe default chart when needed.
@@ -208,11 +212,18 @@ A successful chat result follows this public contract:
     "rows": [],
     "chart": {
       "type": "line",
+      "purpose": "trend",
       "orientation": null,
       "x": "time_label",
       "y": "value",
       "series": "geo_label",
-      "title": "Population on 1 January by age and sex"
+      "title": "Population on 1 January by age and sex",
+      "stack": "none",
+      "sort": "natural",
+      "trendline": "none",
+      "labels": "hover",
+      "scale": "linear",
+      "zero_baseline": "auto"
     },
     "warnings": []
   },
@@ -231,6 +242,11 @@ lookup can also return a conversational `answer` with no result.
 For correlation questions spanning two datasets, the agent joins observations on shared keys such
 as geography and period. The result uses `chart.type: "scatter"`, includes both numeric measures in
 each table row, and lists both Eurostat datasets in `sources`.
+
+For chart-only follow-ups, the agent reuses the latest validated rows and calls `configure_chart`.
+The host resolves `type: "auto"` from the requested analytical purpose, validates field roles and
+cardinality, and emits only the bounded public chart contract. The model never supplies raw
+Vega-Lite, HTML, or JavaScript.
 
 ## Tests
 

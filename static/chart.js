@@ -4,6 +4,8 @@ const NUMBER_FORMAT = ",.1~f";
 const BASE_LAYOUT = Object.freeze({
   width: 920,
   lineHeight: 350,
+  distributionHeight: 370,
+  relationshipHeight: 390,
   verticalBarHeight: 350,
   horizontalBarMinHeight: 350,
   horizontalBarRowHeight: 32,
@@ -63,18 +65,22 @@ function chartTheme() {
   };
 }
 
+function numericFieldsForSpec(spec) {
+  if (spec.type === "histogram") return [spec.x];
+  if (spec.type === "heatmap") return [spec.color];
+  if (spec.type === "scatter") return [spec.x, spec.y, spec.size].filter(Boolean);
+  return [spec.y].filter(Boolean);
+}
+
 function numericRowsForSpec(rows, spec) {
+  const numericFields = numericFieldsForSpec(spec);
   return rows
-    .filter(
-      (row) =>
-        Number.isFinite(Number(row[spec.y])) &&
-        (spec.type !== "scatter" || Number.isFinite(Number(row[spec.x]))),
-    )
-    .map((row) => ({
-      ...row,
-      [spec.y]: Number(row[spec.y]),
-      ...(spec.type === "scatter" ? { [spec.x]: Number(row[spec.x]) } : {}),
-    }));
+    .filter((row) => numericFields.every((field) => Number.isFinite(Number(row[field]))))
+    .map((row) => {
+      const normalized = { ...row };
+      for (const field of numericFields) normalized[field] = Number(row[field]);
+      return normalized;
+    });
 }
 
 export function resolveBarOrientation(spec, rows) {
@@ -90,8 +96,28 @@ export function normalizeChartSpec(spec, rows) {
   if (!spec || spec.type === "none") return spec;
   return {
     ...spec,
-    orientation: spec.type === "bar" ? resolveBarOrientation(spec, rows) : undefined,
+    purpose: spec.purpose || chartPurpose(spec.type, spec.stack),
+    stack: spec.stack || "none",
+    sort: spec.sort || "natural",
+    trendline: spec.trendline || "none",
+    labels: spec.labels || "hover",
+    scale: spec.scale || "linear",
+    zero_baseline: spec.zero_baseline ?? "auto",
+    orientation:
+      spec.type === "bar" || spec.type === "dot"
+        ? resolveBarOrientation(spec, rows)
+        : undefined,
   };
+}
+
+function chartPurpose(type, stack = "none") {
+  if (type === "line") return "trend";
+  if (type === "area") return stack === "none" ? "trend" : "composition";
+  if (type === "bar") return stack === "none" ? "comparison" : "composition";
+  if (type === "dot") return "comparison";
+  if (type === "scatter" || type === "heatmap") return "relationship";
+  if (type === "histogram" || type === "boxplot") return "distribution";
+  return "comparison";
 }
 
 export function horizontalBarLayout(rows, spec) {
@@ -117,6 +143,38 @@ export function sortComparisonRows(rows, spec) {
     if (valueDifference) return valueDifference;
     return String(left[spec.x] ?? "").localeCompare(String(right[spec.x] ?? ""));
   });
+}
+
+function comparisonOrder(spec, fallback = "descending") {
+  if (spec.sort === "ascending") return "ascending";
+  if (spec.sort === "descending") return "descending";
+  return fallback;
+}
+
+function limitChartRows(rows, spec) {
+  if (!Number.isInteger(spec.top_n) || spec.top_n < 1) return rows;
+  if (!["bar", "dot", "heatmap"].includes(spec.type)) return rows;
+  const valueField = spec.type === "heatmap" ? spec.color : spec.y;
+  const totals = new Map();
+  for (const row of rows) {
+    const key = String(row[spec.x] ?? "");
+    totals.set(key, (totals.get(key) || 0) + Number(row[valueField] || 0));
+  }
+  const direction = comparisonOrder(spec);
+  const selected = [...totals]
+    .sort((left, right) =>
+      direction === "ascending" ? left[1] - right[1] : right[1] - left[1],
+    )
+    .slice(0, spec.top_n)
+    .map(([key]) => key);
+  const allowed = new Set(selected);
+  return rows.filter((row) => allowed.has(String(row[spec.x] ?? "")));
+}
+
+function quantitativeScale(spec, defaultZero = false) {
+  if (spec.scale === "log") return { type: "log", zero: false, nice: true };
+  const zero = spec.zero_baseline === "auto" ? defaultZero : Boolean(spec.zero_baseline);
+  return { type: "linear", zero, nice: true };
 }
 
 function colorEncoding(spec, rows, theme) {
@@ -199,11 +257,43 @@ function baseConfig(theme) {
   };
 }
 
+function chartWithLabels(height, mark, encoding, spec, options = {}) {
+  if (spec.labels !== "always") return { height, mark, encoding };
+  const horizontal = options.orientation === "horizontal";
+  const labelField = options.labelField || spec.y;
+  const textEncoding = {
+    ...encoding,
+    text: {
+      field: labelField,
+      type: options.labelType || "quantitative",
+      ...(options.labelType === "nominal" ? {} : { format: NUMBER_FORMAT }),
+    },
+  };
+  delete textEncoding.size;
+  return {
+    height,
+    layer: [
+      { mark, encoding },
+      {
+        mark: {
+          type: "text",
+          align: horizontal ? "left" : "center",
+          baseline: horizontal ? "middle" : "bottom",
+          dx: horizontal ? 6 : 0,
+          dy: horizontal ? 0 : -7,
+          fontSize: 10,
+        },
+        encoding: textEncoding,
+      },
+    ],
+  };
+}
+
 function lineSpec(rows, spec, theme) {
   const xValues = sortDimensionValues(uniqueValues(rows, spec.x));
-  return {
-    height: BASE_LAYOUT.lineHeight,
-    mark: {
+  return chartWithLabels(
+    BASE_LAYOUT.lineHeight,
+    {
       type: "line",
       point: {
         filled: true,
@@ -215,7 +305,7 @@ function lineSpec(rows, spec, theme) {
       strokeJoin: "miter",
       strokeWidth: 2.5,
     },
-    encoding: {
+    {
       x: {
         field: spec.x,
         type: "ordinal",
@@ -230,22 +320,27 @@ function lineSpec(rows, spec, theme) {
       y: {
         field: spec.y,
         type: "quantitative",
-        scale: { zero: false, nice: true },
+        scale: quantitativeScale(spec, false),
         axis: { title: fieldTitle(spec, "y"), grid: true, tickCount: 5 },
       },
       color: colorEncoding(spec, rows, theme),
       tooltip: tooltipFields(spec),
     },
-  };
+    spec,
+  );
 }
 
 function verticalBarSpec(rows, spec, theme) {
   const xValues = sortDimensionValues(uniqueValues(rows, spec.x));
+  const stacked = spec.stack === "stacked" || spec.stack === "normalize";
   const encoding = {
     x: {
       field: spec.x,
       type: "nominal",
-      sort: xValues,
+      sort:
+        spec.sort === "natural"
+          ? xValues
+          : { field: spec.y, op: "sum", order: comparisonOrder(spec) },
       axis: {
         title: fieldTitle(spec, "x"),
         grid: false,
@@ -256,26 +351,38 @@ function verticalBarSpec(rows, spec, theme) {
     y: {
       field: spec.y,
       type: "quantitative",
-      scale: { zero: true, nice: true },
-      axis: { title: fieldTitle(spec, "y"), grid: true, tickCount: 5 },
+      stack: stacked ? (spec.stack === "normalize" ? "normalize" : "zero") : null,
+      scale: quantitativeScale(spec, true),
+      axis: {
+        title: fieldTitle(spec, "y"),
+        grid: true,
+        tickCount: 5,
+        ...(spec.stack === "normalize" ? { format: ".0%" } : {}),
+      },
     },
     color: colorEncoding(spec, rows, theme),
     tooltip: tooltipFields(spec),
   };
-  if (spec.series) encoding.xOffset = { field: spec.series };
-  return {
-    height: BASE_LAYOUT.verticalBarHeight,
-    mark: { type: "bar", cornerRadiusEnd: 1 },
+  if (spec.series && !stacked) encoding.xOffset = { field: spec.series };
+  return chartWithLabels(
+    BASE_LAYOUT.verticalBarHeight,
+    { type: "bar", cornerRadiusEnd: 1 },
     encoding,
-  };
+    spec,
+  );
 }
 
 function horizontalBarSpec(rows, spec, theme) {
+  const stacked = spec.stack === "stacked" || spec.stack === "normalize";
   const encoding = {
     y: {
       field: spec.x,
       type: "nominal",
-      sort: { field: spec.y, op: "sum", order: "descending" },
+      sort: {
+        field: spec.y,
+        op: "sum",
+        order: comparisonOrder(spec),
+      },
       axis: {
         title: fieldTitle(spec, "x"),
         grid: false,
@@ -285,23 +392,54 @@ function horizontalBarSpec(rows, spec, theme) {
     x: {
       field: spec.y,
       type: "quantitative",
-      scale: { zero: true, nice: true },
-      axis: { title: fieldTitle(spec, "y"), grid: true, tickCount: 5 },
+      stack: stacked ? (spec.stack === "normalize" ? "normalize" : "zero") : null,
+      scale: quantitativeScale(spec, true),
+      axis: {
+        title: fieldTitle(spec, "y"),
+        grid: true,
+        tickCount: 5,
+        ...(spec.stack === "normalize" ? { format: ".0%" } : {}),
+      },
     },
     color: colorEncoding(spec, rows, theme),
     tooltip: tooltipFields(spec),
   };
-  if (spec.series) encoding.yOffset = { field: spec.series };
-  return {
-    height: horizontalBarLayout(rows, spec).height,
-    mark: { type: "bar", cornerRadiusEnd: 1 },
+  if (spec.series && !stacked) encoding.yOffset = { field: spec.series };
+  return chartWithLabels(
+    horizontalBarLayout(rows, spec).height,
+    { type: "bar", cornerRadiusEnd: 1 },
     encoding,
-  };
+    spec,
+    { orientation: "horizontal" },
+  );
 }
 
 function scatterSpec(rows, spec, theme) {
-  return {
-    height: 390,
+  const encoding = {
+    x: {
+      field: spec.x,
+      type: "quantitative",
+      scale: quantitativeScale(spec, false),
+      axis: { title: fieldTitle(spec, "x"), grid: true, tickCount: 5 },
+    },
+    y: {
+      field: spec.y,
+      type: "quantitative",
+      scale: quantitativeScale(spec, false),
+      axis: { title: fieldTitle(spec, "y"), grid: true, tickCount: 5 },
+    },
+    color: colorEncoding(spec, rows, theme),
+    tooltip: tooltipFields(spec, { includeLabel: true }),
+  };
+  if (spec.size) {
+    encoding.size = {
+      field: spec.size,
+      type: "quantitative",
+      scale: { range: [60, 520] },
+      legend: { title: fieldLabel(spec.size), orient: "bottom" },
+    };
+  }
+  const pointLayer = {
     mark: {
       type: "point",
       filled: true,
@@ -309,43 +447,242 @@ function scatterSpec(rows, spec, theme) {
       stroke: theme.pointOutline,
       strokeWidth: 1.5,
     },
+    encoding,
+  };
+  const layers = [];
+  if (spec.trendline === "linear") {
+    layers.push({
+      transform: [
+        {
+          regression: spec.y,
+          on: spec.x,
+          ...(spec.series ? { groupby: [spec.series] } : {}),
+        },
+      ],
+      mark: { type: "line", strokeWidth: 2, opacity: 0.8 },
+      encoding: {
+        x: encoding.x,
+        y: encoding.y,
+        color: encoding.color,
+      },
+    });
+  }
+  layers.push(pointLayer);
+  if (spec.labels === "always") {
+    layers.push({
+      mark: { type: "text", dy: -10, fontSize: 10 },
+      encoding: {
+        x: encoding.x,
+        y: encoding.y,
+        color: encoding.color,
+        text: spec.label
+          ? { field: spec.label, type: "nominal" }
+          : { field: spec.y, type: "quantitative", format: NUMBER_FORMAT },
+      },
+    });
+  }
+  return {
+    height: BASE_LAYOUT.relationshipHeight,
+    ...(layers.length === 1 ? pointLayer : { layer: layers }),
+  };
+}
+
+function areaSpec(rows, spec, theme) {
+  const xValues = sortDimensionValues(uniqueValues(rows, spec.x));
+  const stack =
+    spec.stack === "normalize" ? "normalize" : spec.stack === "stacked" ? "zero" : null;
+  return {
+    height: BASE_LAYOUT.lineHeight,
+    mark: { type: "area", opacity: spec.series ? 0.72 : 0.5, line: true },
     encoding: {
       x: {
         field: spec.x,
-        type: "quantitative",
-        scale: { zero: false, nice: true },
-        axis: { title: fieldTitle(spec, "x"), grid: true, tickCount: 5 },
+        type: "ordinal",
+        sort: xValues,
+        axis: { title: fieldTitle(spec, "x"), grid: false, labelAngle: 0 },
       },
       y: {
         field: spec.y,
         type: "quantitative",
-        scale: { zero: false, nice: true },
-        axis: { title: fieldTitle(spec, "y"), grid: true, tickCount: 5 },
+        stack,
+        scale: quantitativeScale(spec, stack !== null),
+        axis: {
+          title: fieldTitle(spec, "y"),
+          grid: true,
+          tickCount: 5,
+          ...(spec.stack === "normalize" ? { format: ".0%" } : {}),
+        },
       },
       color: colorEncoding(spec, rows, theme),
-      tooltip: tooltipFields(spec, { includeLabel: true }),
+      tooltip: tooltipFields(spec),
     },
+  };
+}
+
+function dotSpec(rows, spec, theme) {
+  const horizontal = spec.orientation !== "vertical";
+  const category = {
+    field: spec.x,
+    type: "nominal",
+    sort:
+      spec.sort === "natural"
+        ? sortDimensionValues(uniqueValues(rows, spec.x))
+        : { field: spec.y, op: "sum", order: comparisonOrder(spec) },
+    axis: {
+      title: fieldTitle(spec, "x"),
+      grid: false,
+      labelLimit: BASE_LAYOUT.horizontalBarMaxLabelWidth,
+    },
+  };
+  const value = {
+    field: spec.y,
+    type: "quantitative",
+    scale: quantitativeScale(spec, false),
+    axis: { title: fieldTitle(spec, "y"), grid: true, tickCount: 5 },
+  };
+  const encoding = {
+    x: horizontal ? value : category,
+    y: horizontal ? category : value,
+    color: colorEncoding(spec, rows, theme),
+    tooltip: tooltipFields(spec),
+  };
+  if (spec.series) {
+    encoding[horizontal ? "yOffset" : "xOffset"] = { field: spec.series };
+  }
+  return chartWithLabels(
+    horizontal ? horizontalBarLayout(rows, spec).height : BASE_LAYOUT.verticalBarHeight,
+    {
+      type: "point",
+      filled: true,
+      size: 105,
+      stroke: theme.pointOutline,
+      strokeWidth: 1.5,
+    },
+    encoding,
+    spec,
+    { orientation: horizontal ? "horizontal" : "vertical" },
+  );
+}
+
+function heatmapSpec(rows, spec) {
+  return {
+    height: Math.max(300, uniqueValues(rows, spec.y).length * 30 + 80),
+    mark: { type: "rect", cornerRadius: 1 },
+    encoding: {
+      x: {
+        field: spec.x,
+        type: "ordinal",
+        sort: sortDimensionValues(uniqueValues(rows, spec.x)),
+        axis: { title: fieldTitle(spec, "x"), grid: false, labelAngle: 0 },
+      },
+      y: {
+        field: spec.y,
+        type: "nominal",
+        sort: sortDimensionValues(uniqueValues(rows, spec.y)),
+        axis: { title: fieldTitle(spec, "y"), grid: false },
+      },
+      color: {
+        field: spec.color,
+        type: "quantitative",
+        scale: spec.scale === "log" ? { type: "log" } : { type: "linear" },
+        legend: { title: fieldLabel(spec.color), orient: "bottom" },
+      },
+      tooltip: [
+        { field: spec.x, type: "ordinal", title: fieldTitle(spec, "x") },
+        { field: spec.y, type: "nominal", title: fieldTitle(spec, "y") },
+        {
+          field: spec.color,
+          type: "quantitative",
+          title: fieldLabel(spec.color),
+          format: NUMBER_FORMAT,
+        },
+      ],
+    },
+  };
+}
+
+function histogramSpec(spec, theme) {
+  return {
+    height: BASE_LAYOUT.distributionHeight,
+    mark: { type: "bar", color: theme.series[0], cornerRadiusEnd: 1 },
+    encoding: {
+      x: {
+        field: spec.x,
+        type: "quantitative",
+        bin: { maxbins: 20 },
+        scale: quantitativeScale(spec, false),
+        axis: { title: fieldTitle(spec, "x"), grid: false },
+      },
+      y: {
+        aggregate: "count",
+        type: "quantitative",
+        scale: { zero: true, nice: true },
+        axis: { title: "Observations", grid: true, tickMinStep: 1 },
+      },
+      tooltip: [
+        { field: spec.x, type: "quantitative", bin: true, title: fieldTitle(spec, "x") },
+        { aggregate: "count", type: "quantitative", title: "Observations" },
+      ],
+    },
+  };
+}
+
+function boxplotSpec(rows, spec, theme) {
+  const encoding = {
+    y: {
+      field: spec.y,
+      type: "quantitative",
+      scale: quantitativeScale(spec, false),
+      axis: { title: fieldTitle(spec, "y"), grid: true },
+    },
+    color: colorEncoding(spec, rows, theme),
+    tooltip: [
+      ...(spec.x
+        ? [{ field: spec.x, type: "nominal", title: fieldTitle(spec, "x") }]
+        : []),
+      { field: spec.y, type: "quantitative", title: fieldTitle(spec, "y") },
+    ],
+  };
+  if (spec.x) {
+    encoding.x = {
+      field: spec.x,
+      type: "nominal",
+      sort: sortDimensionValues(uniqueValues(rows, spec.x)),
+      axis: { title: fieldTitle(spec, "x"), grid: false, labelAngle: 0 },
+    };
+  }
+  return {
+    height: BASE_LAYOUT.distributionHeight,
+    mark: { type: "boxplot", extent: "min-max", size: 28 },
+    encoding,
   };
 }
 
 export function buildVegaLiteSpec(rows, chartSpec, theme = FALLBACK_THEME) {
   const spec = normalizeChartSpec(chartSpec, rows);
   if (!spec || spec.type === "none") return null;
+  const renderers = {
+    line: lineSpec,
+    area: areaSpec,
+    bar: (chartRows, resolved, colors) =>
+      resolved.orientation === "horizontal"
+        ? horizontalBarSpec(chartRows, resolved, colors)
+        : verticalBarSpec(chartRows, resolved, colors),
+    dot: dotSpec,
+    scatter: scatterSpec,
+    heatmap: heatmapSpec,
+    histogram: (_chartRows, resolved, colors) => histogramSpec(resolved, colors),
+    boxplot: boxplotSpec,
+  };
+  if (!renderers[spec.type]) return null;
   const cleanRows = numericRowsForSpec(rows, spec);
   if (!cleanRows.length) return null;
-  const chartRows =
-    spec.type === "bar" && spec.orientation === "horizontal"
-      ? sortComparisonRows(cleanRows, spec)
-      : cleanRows;
-
-  const chart =
-    spec.type === "line"
-      ? lineSpec(chartRows, spec, theme)
-      : spec.type === "scatter"
-        ? scatterSpec(chartRows, spec, theme)
-        : spec.orientation === "horizontal"
-          ? horizontalBarSpec(chartRows, spec, theme)
-          : verticalBarSpec(chartRows, spec, theme);
+  let chartRows = limitChartRows(cleanRows, spec);
+  if (["bar", "dot"].includes(spec.type) && spec.orientation === "horizontal") {
+    chartRows = sortComparisonRows(chartRows, spec);
+    if (spec.sort === "ascending") chartRows.reverse();
+  }
+  const chart = renderers[spec.type](chartRows, spec, theme);
 
   return {
     $schema: VEGA_LITE_SCHEMA,
@@ -412,8 +749,14 @@ export function createChartSection(result) {
   const section = element("section", "result-section");
   const heading = element("div", "section-heading");
   const copy = element("div");
-  const sectionTitle =
-    spec.type === "line" ? "Trend" : spec.type === "scatter" ? "Relationship" : "Comparison";
+  const sectionTitle = {
+    trend: "Trend",
+    comparison: "Comparison",
+    relationship: "Relationship",
+    distribution: "Distribution",
+    composition: "Composition",
+    change: "Change",
+  }[spec.purpose] || "Chart";
   copy.appendChild(element("h2", "", sectionTitle));
   copy.appendChild(element("p", "", "Hover or focus a mark to inspect an observation"));
   heading.appendChild(copy);

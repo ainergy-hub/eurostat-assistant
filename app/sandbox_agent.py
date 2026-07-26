@@ -30,10 +30,33 @@ TOOL_CALL_LIMITS = {
     "inspect_dimensions": 4,
     "fetch_eurostat": 4,
     "create_scatter": 2,
+    "configure_chart": 3,
 }
 EVENT_PREFIX = "__EUROSTAT_EVENT__"
 MAX_EVENT_PREVIEW_CHARS = 700
 CATALOG_CACHE = ROOT / "eurostat_toc.tsv"
+CHART_REFERENCE = ROOT / "chart-selection.md"
+if not CHART_REFERENCE.exists():
+    CHART_REFERENCE = ROOT.parent / "references" / "chart-selection.md"
+
+CHART_TYPES = {
+    "line",
+    "area",
+    "bar",
+    "dot",
+    "scatter",
+    "heatmap",
+    "histogram",
+    "boxplot",
+}
+CHART_PURPOSES = {
+    "trend",
+    "comparison",
+    "relationship",
+    "distribution",
+    "composition",
+    "change",
+}
 
 
 TOOLS = [
@@ -149,6 +172,77 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "configure_chart",
+            "description": (
+                "Choose or modify the chart for the most recently fetched or reusable rows. "
+                "Use after the data is available when the user asks for a chart type, analytical "
+                "relationship, sorting, stacking, normalization, top-N filtering, labels, a "
+                "trendline, a log scale, or another supported chart modification. Set type=auto "
+                "and provide purpose when the host should select the most suitable chart."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "purpose": {
+                        "type": "string",
+                        "enum": sorted(CHART_PURPOSES),
+                        "description": "The analytical relationship the chart should communicate.",
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["auto", *sorted(CHART_TYPES)],
+                    },
+                    "x": {"type": "string", "description": "Horizontal/category/bin field."},
+                    "y": {"type": "string", "description": "Vertical numeric field."},
+                    "color": {
+                        "type": "string",
+                        "description": "Numeric intensity field for a heatmap.",
+                    },
+                    "size": {
+                        "type": "string",
+                        "description": "Optional numeric point-size field for a scatter plot.",
+                    },
+                    "series": {
+                        "type": "string",
+                        "description": "Optional categorical grouping field.",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "Optional reader-facing point label field.",
+                    },
+                    "orientation": {
+                        "type": "string",
+                        "enum": ["horizontal", "vertical"],
+                    },
+                    "stack": {
+                        "type": "string",
+                        "enum": ["none", "stacked", "normalize"],
+                    },
+                    "sort": {
+                        "type": "string",
+                        "enum": ["natural", "ascending", "descending"],
+                    },
+                    "top_n": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "trendline": {"type": "string", "enum": ["none", "linear"]},
+                    "labels": {"type": "string", "enum": ["hover", "always"]},
+                    "scale": {"type": "string", "enum": ["linear", "log"]},
+                    "zero_baseline": {
+                        "type": "string",
+                        "enum": ["auto", "zero", "free"],
+                        "description": (
+                            "Use auto unless the user explicitly requests a zero or free baseline."
+                        ),
+                    },
+                    "title": {"type": "string"},
+                },
+                "required": ["purpose"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 
@@ -204,11 +298,11 @@ def call_tool(name: str, raw_arguments: str) -> str:
             command.extend(["--time", str(time_value)])
         return run_helper(command)
 
-    if name == "create_scatter":
+    if name in {"create_scatter", "configure_chart"}:
         return json.dumps(
             {
                 "accepted": True,
-                "message": "Chart request recorded. Field compatibility will be validated by the host.",
+                "message": "Chart request recorded. Compatibility will be validated by the host.",
             }
         )
 
@@ -414,38 +508,68 @@ def _chart_intent(rows: list[dict[str, Any]], title: str) -> dict[str, Any]:
     if not rows or not any(isinstance(row.get("value"), (int, float)) for row in rows):
         return {"type": "none"}
 
-    time_field = "time_label" if "time_label" in rows[0] else "time" if "time" in rows[0] else None
+    time_field = _time_field(rows)
     time_values = _unique_values(rows, time_field) if time_field else []
-    dimension_fields = [
-        field
-        for field in rows[0]
-        if field.endswith("_label") and field != time_field and len(_unique_values(rows, field)) > 1
-    ]
-    preferred_series = next(
-        (field for field in ("geo_label", "indic_label", "unit_label") if field in dimension_fields),
-        dimension_fields[0] if dimension_fields else None,
-    )
+    dimension_fields = _dimension_fields(rows, exclude={time_field} if time_field else set())
+    preferred_series = _preferred_dimension(dimension_fields)
 
     if time_field and len(time_values) > 1:
-        return {
+        choice = {
+            "purpose": "trend",
             "type": "line",
             "x": time_field,
             "y": "value",
             "series": preferred_series,
-            "title": title,
         }
+        return _validated_chart_choice(rows, title, choice) or {"type": "none"}
 
     category = preferred_series
     if category:
-        return {
+        choice = {
+            "purpose": "comparison",
             "type": "bar",
             "orientation": "horizontal",
             "x": category,
             "y": "value",
-            "series": None,
-            "title": title,
         }
+        return _validated_chart_choice(rows, title, choice) or {"type": "none"}
     return {"type": "none"}
+
+
+def _available_fields(rows: list[dict[str, Any]]) -> set[str]:
+    return {field for row in rows for field in row}
+
+
+def _time_field(rows: list[dict[str, Any]]) -> str | None:
+    fields = _available_fields(rows)
+    if "time_label" in fields:
+        return "time_label"
+    if "time" in fields:
+        return "time"
+    return None
+
+
+def _dimension_fields(
+    rows: list[dict[str, Any]],
+    exclude: set[str] | None = None,
+) -> list[str]:
+    excluded = exclude or set()
+    fields = _available_fields(rows)
+    candidates = [
+        field
+        for field in fields
+        if field not in excluded
+        and len(_unique_values(rows, field)) > 1
+        and (field.endswith("_label") or not _numeric_field(rows, field))
+    ]
+    return sorted(candidates)
+
+
+def _preferred_dimension(fields: list[str]) -> str | None:
+    for field in ("geo_label", "indic_label", "product_label", "unit_label"):
+        if field in fields:
+            return field
+    return fields[0] if fields else None
 
 
 def _numeric_field(rows: list[dict[str, Any]], field: str) -> bool:
@@ -458,6 +582,137 @@ def _numeric_field(rows: list[dict[str, Any]], field: str) -> bool:
         return False
 
 
+def _numeric_fields(rows: list[dict[str, Any]]) -> list[str]:
+    return sorted(field for field in _available_fields(rows) if _numeric_field(rows, field))
+
+
+def _measure_field(rows: list[dict[str, Any]]) -> str | None:
+    numeric = _numeric_fields(rows)
+    if "value" in numeric:
+        return "value"
+    non_time = [field for field in numeric if field != "time"]
+    return non_time[0] if non_time else (numeric[0] if numeric else None)
+
+
+def _resolve_chart_type(
+    rows: list[dict[str, Any]],
+    choice: dict[str, Any],
+) -> str | None:
+    requested = choice.get("type")
+    if requested in CHART_TYPES:
+        return str(requested)
+    if requested not in {None, "auto"}:
+        return None
+
+    purpose = choice.get("purpose")
+    if purpose in {"trend", "change"}:
+        return "line"
+    if purpose == "comparison":
+        category = choice.get("x")
+        if not isinstance(category, str) or category not in _available_fields(rows):
+            category = _preferred_dimension(
+                _dimension_fields(
+                    rows,
+                    exclude={_time_field(rows)} if _time_field(rows) else set(),
+                )
+            )
+        if category:
+            return "dot" if len(_unique_values(rows, category)) > 12 else "bar"
+        return "bar"
+    if purpose == "relationship":
+        x_field = choice.get("x")
+        y_field = choice.get("y")
+        color_field = choice.get("color")
+        if (
+            isinstance(x_field, str)
+            and isinstance(y_field, str)
+            and _numeric_field(rows, x_field)
+            and _numeric_field(rows, y_field)
+        ):
+            return "scatter"
+        if (
+            isinstance(x_field, str)
+            and isinstance(y_field, str)
+            and isinstance(color_field, str)
+            and _numeric_field(rows, color_field)
+        ):
+            return "heatmap"
+        return "scatter"
+    if purpose == "distribution":
+        return "boxplot" if choice.get("x") and choice.get("y") else "histogram"
+    if purpose == "composition":
+        return "area" if choice.get("x") == _time_field(rows) else "bar"
+    return None
+
+
+def _default_chart_fields(
+    rows: list[dict[str, Any]],
+    chart_type: str,
+    choice: dict[str, Any],
+) -> dict[str, Any]:
+    fields = _available_fields(rows)
+    time_field = _time_field(rows)
+    measure = _measure_field(rows)
+    dimensions = _dimension_fields(rows, exclude={time_field} if time_field else set())
+    category = _preferred_dimension(dimensions)
+    result = dict(choice)
+
+    if chart_type in {"line", "area"}:
+        result["x"] = result.get("x") if result.get("x") in fields else time_field or category
+        result["y"] = result.get("y") if result.get("y") in fields else measure
+    elif chart_type in {"bar", "dot"}:
+        result["x"] = result.get("x") if result.get("x") in fields else category or time_field
+        result["y"] = result.get("y") if result.get("y") in fields else measure
+    elif chart_type == "scatter":
+        numeric = _numeric_fields(rows)
+        result["y"] = result.get("y") if result.get("y") in fields else measure
+        x_candidates = [field for field in numeric if field != result.get("y")]
+        result["x"] = (
+            result.get("x")
+            if result.get("x") in fields
+            else ("time" if "time" in x_candidates else (x_candidates[0] if x_candidates else None))
+        )
+    elif chart_type == "heatmap":
+        all_dimensions = _dimension_fields(rows)
+        result["x"] = (
+            result.get("x")
+            if result.get("x") in fields
+            else time_field or (all_dimensions[0] if all_dimensions else None)
+        )
+        y_candidates = [field for field in all_dimensions if field != result.get("x")]
+        result["y"] = (
+            result.get("y") if result.get("y") in fields else (y_candidates[0] if y_candidates else None)
+        )
+        result["color"] = (
+            result.get("color") if result.get("color") in fields else measure
+        )
+    elif chart_type == "histogram":
+        result["x"] = result.get("x") if result.get("x") in fields else measure
+        result["y"] = None
+    elif chart_type == "boxplot":
+        result["x"] = result.get("x") if result.get("x") in fields else category
+        result["y"] = result.get("y") if result.get("y") in fields else measure
+
+    if chart_type in {"line", "area", "bar", "dot", "boxplot"}:
+        series = result.get("series")
+        if series not in fields:
+            series_candidates = [
+                field for field in dimensions if field not in {result.get("x"), result.get("y")}
+            ]
+            result["series"] = _preferred_dimension(series_candidates)
+    return result
+
+
+def _valid_line_grain(rows: list[dict[str, Any]], x_field: str, series: str | None) -> bool:
+    keys: set[tuple[Any, ...]] = set()
+    for row in rows:
+        key = (row.get(x_field), row.get(series) if series else None)
+        if key in keys:
+            return False
+        keys.add(key)
+    return True
+
+
 def _validated_chart_choice(
     rows: list[dict[str, Any]],
     title: str,
@@ -465,44 +720,154 @@ def _validated_chart_choice(
 ) -> dict[str, Any] | None:
     if not choice or not rows:
         return None
-    chart_type = choice.get("type")
-    x_field = choice.get("x")
-    y_field = choice.get("y")
-    if chart_type not in {"line", "bar", "scatter"}:
+    chart_type = _resolve_chart_type(rows, choice)
+    if chart_type not in CHART_TYPES:
         return None
-    if not isinstance(x_field, str) or not isinstance(y_field, str):
-        return None
-    if x_field not in rows[0] or y_field not in rows[0] or not _numeric_field(rows, y_field):
-        return None
-    if chart_type == "scatter" and (
-        x_field == y_field or not _numeric_field(rows, x_field)
-    ):
-        return None
+    resolved = _default_chart_fields(rows, chart_type, choice)
+    fields = _available_fields(rows)
+    x_field = resolved.get("x")
+    y_field = resolved.get("y")
+    color_field = resolved.get("color")
 
-    series = choice.get("series")
+    if chart_type == "histogram":
+        if not isinstance(x_field, str) or x_field not in fields or not _numeric_field(rows, x_field):
+            return None
+    elif chart_type == "heatmap":
+        if (
+            not isinstance(x_field, str)
+            or not isinstance(y_field, str)
+            or not isinstance(color_field, str)
+            or x_field not in fields
+            or y_field not in fields
+            or x_field == y_field
+            or not _numeric_field(rows, color_field)
+            or len(_unique_values(rows, x_field)) * len(_unique_values(rows, y_field)) > 500
+        ):
+            return None
+    elif chart_type == "boxplot":
+        if not isinstance(y_field, str) or not _numeric_field(rows, y_field):
+            return None
+        if x_field is not None and (not isinstance(x_field, str) or x_field not in fields):
+            return None
+    elif not isinstance(x_field, str) or not isinstance(y_field, str):
+        return None
+    elif x_field not in fields or y_field not in fields or not _numeric_field(rows, y_field):
+        return None
+    if chart_type == "scatter" and (x_field == y_field or not _numeric_field(rows, x_field)):
+        return None
+    series = resolved.get("series")
     if (
         not isinstance(series, str)
-        or series not in rows[0]
+        or series not in fields
+        or series in {x_field, y_field, color_field}
+        or len(_unique_values(rows, series)) < 2
         or len(_unique_values(rows, series)) > 12
     ):
         series = None
-    label = choice.get("label")
-    if not isinstance(label, str) or label not in rows[0]:
+    if chart_type in {"line", "area"} and not _valid_line_grain(rows, x_field, series):
+        return None
+    label = resolved.get("label")
+    if not isinstance(label, str) or label not in fields:
         label = None
-    orientation = choice.get("orientation")
-    if chart_type != "bar" or orientation not in {"horizontal", "vertical"}:
+    size = resolved.get("size")
+    if (
+        chart_type != "scatter"
+        or not isinstance(size, str)
+        or size not in fields
+        or not _numeric_field(rows, size)
+    ):
+        size = None
+    orientation = resolved.get("orientation")
+    if chart_type not in {"bar", "dot"} or orientation not in {"horizontal", "vertical"}:
         orientation = None
+    stack = resolved.get("stack")
+    if stack not in {"none", "stacked", "normalize"}:
+        stack = "none"
+    if chart_type not in {"bar", "area"} or not series:
+        stack = "none"
+    elif resolved.get("purpose") == "composition" and stack == "none":
+        stack = "stacked"
+    sort = resolved.get("sort")
+    if sort not in {"natural", "ascending", "descending"}:
+        sort = "natural"
+    top_n = resolved.get("top_n")
+    if (
+        not isinstance(top_n, int)
+        or isinstance(top_n, bool)
+        or not 1 <= top_n <= 50
+        or chart_type not in {"bar", "dot", "heatmap"}
+    ):
+        top_n = None
+    trendline = resolved.get("trendline")
+    if chart_type != "scatter" or trendline != "linear":
+        trendline = "none"
+    labels = (
+        "always"
+        if chart_type in {"line", "bar", "dot", "scatter"}
+        and resolved.get("labels") == "always"
+        else "hover"
+    )
+    scale = "log" if resolved.get("scale") == "log" else "linear"
+    numeric_axis_fields = [
+        field
+        for field in (x_field if chart_type in {"scatter", "histogram"} else None, y_field, color_field)
+        if isinstance(field, str) and _numeric_field(rows, field)
+    ]
+    if scale == "log" and any(
+        float(row[field]) <= 0
+        for field in numeric_axis_fields
+        for row in rows
+        if row.get(field) is not None
+    ):
+        scale = "linear"
+    zero_baseline = resolved.get("zero_baseline")
+    if zero_baseline == "zero":
+        zero_baseline = True
+    elif zero_baseline == "free":
+        zero_baseline = False
+    if zero_baseline not in {True, False, "auto"}:
+        zero_baseline = "auto"
+    if chart_type == "bar":
+        zero_baseline = True
+    if scale == "log":
+        zero_baseline = False
+    purpose = resolved.get("purpose")
+    if purpose not in CHART_PURPOSES:
+        purpose = {
+            "line": "trend",
+            "area": "composition" if stack != "none" else "trend",
+            "bar": "composition" if stack != "none" else "comparison",
+            "dot": "comparison",
+            "scatter": "relationship",
+            "heatmap": "relationship",
+            "histogram": "distribution",
+            "boxplot": "distribution",
+        }[chart_type]
 
     intent: dict[str, Any] = {
         "type": chart_type,
+        "purpose": purpose,
         "x": x_field,
         "y": y_field,
+        "color": color_field if chart_type == "heatmap" else None,
+        "size": size,
         "series": series,
         "label": label,
-        "title": title,
+        "title": str(resolved.get("title") or title)[:160],
+        "stack": stack,
+        "sort": sort,
+        "top_n": top_n,
+        "trendline": trendline,
+        "labels": labels,
+        "scale": scale,
+        "zero_baseline": zero_baseline,
     }
     if orientation:
         intent["orientation"] = orientation
+    for axis in ("x", "y"):
+        axis_label = resolved.get(f"{axis}_label")
+        if isinstance(axis_label, str) and axis_label.strip():
+            intent[f"{axis}_label"] = axis_label.strip()[:80]
     return intent
 
 
@@ -703,6 +1068,7 @@ def build_scatter_result(
         "rows": paired_rows,
         "chart": {
             "type": "scatter",
+            "purpose": "relationship",
             "x": x_field,
             "y": y_field,
             "x_label": x_label,
@@ -710,6 +1076,13 @@ def build_scatter_result(
             "series": None,
             "label": label_field if label_field in paired_rows[0] else None,
             "title": title,
+            "stack": "none",
+            "sort": "natural",
+            "top_n": None,
+            "trendline": "none",
+            "labels": "hover",
+            "scale": "linear",
+            "zero_baseline": "auto",
         },
         "warnings": warnings,
     }
@@ -820,6 +1193,7 @@ def openrouter_chat(
 
 def build_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
     skill_text = SKILL.read_text()
+    chart_reference = CHART_REFERENCE.read_text() if CHART_REFERENCE.exists() else ""
     system = f"""
 You are a Eurostat data agent running inside an E2B sandbox.
 
@@ -827,12 +1201,17 @@ Follow this local skill exactly:
 
 {skill_text}
 
+Use this chart-selection reference when choosing or modifying a visualization:
+
+{chart_reference}
+
 Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded queries. Your final answer must be concise, cite the dataset code and filters used, and mention the latest period used when relevant. Render each dataset code as a Markdown link to https://ec.europa.eu/eurostat/databrowser/view/{{dataset_code}}/default/table?lang=en, replacing {{dataset_code}} in both the label and URL with the actual code.
 When a concept could map to materially different Eurostat measures, perform bounded discovery before asking: run at most one catalogue search and inspect up to two credible candidates. Do not fetch observations for competing interpretations. If ambiguity remains, ask one concise question grounded in the discovered dataset titles, codes, units, dimensions, and coverage, and recommend the candidate that best matches the user's wording. If one candidate clearly matches, continue without asking and state any minor assumption.
 If the user provides an exact dataset code, inspect it directly without searching. Use at most two catalogue searches per requested measure. If two searches do not produce a credible candidate, stop searching and ask the user to choose from the closest candidates.
 Do not repeat a tool call with the same arguments. After a fetch returns zero rows or invalid filters, correct the filters from the inspected dimension codes; do not restart dataset search.
 The request may include a reusable structured result from the most recent chart. When it does, answer follow-up questions from those exact rows without calling search_eurostat, inspect_dimensions, or fetch_eurostat again. Fetch new data only when the user explicitly requests a different dataset, filters, geography, time range, or facts that are not present in the reusable rows.
-The host selects line and bar charts automatically for a single fetched dataset. For a relationship or correlation between measures from two datasets, fetch the same geography and statistical period from both datasets, filter each fetch to one numeric observation per geography-period, and then call create_scatter. A promise in prose does not create a chart: do not say you made a scatter plot unless create_scatter returned accepted=true. The joined scatter result also supplies the paired two-measure table.
+The host selects a safe default chart automatically. After rows are available, call configure_chart when the user requests a particular visualization or modification, or when the question's analytical purpose makes a richer chart materially clearer. Use type=auto with purpose when the host should resolve the best compatible chart. A promise in prose does not modify the chart: only describe a chart change after configure_chart returns accepted=true.
+For a relationship or correlation between measures from two datasets, fetch the same geography and statistical period from both datasets, filter each fetch to one numeric observation per geography-period, and then call create_scatter. Do not say you made the cross-dataset scatter plot unless create_scatter returned accepted=true. The joined scatter result also supplies the paired two-measure table. You may then call configure_chart to add a trendline, labels, sizing, or another compatible modification.
 The host application satisfies the skill's table requirement by rendering the fetched observations as an interactive table, so do not repeat them as a Markdown table. Give the interpretation, important caveats, dataset code, and filters in concise prose.
 """.strip()
 
@@ -877,6 +1256,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     last_fetch: dict[str, Any] | None = None
     fetch_records: list[dict[str, Any]] = []
     composed_result: dict[str, Any] | None = None
+    chart_choice: dict[str, Any] | None = None
     tool_call_count = 0
     tool_call_details: list[dict[str, Any]] = []
     tool_counts: dict[str, int] = {}
@@ -894,7 +1274,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 "result": response_result(
                     last_fetch,
                     context_result,
-                    None,
+                    chart_choice,
                     composed_result,
                 ),
                 "tool_calls": tool_call_count,
@@ -971,6 +1351,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 candidate = build_scatter_result(fetch_records, parsed_arguments)
                 if candidate:
                     composed_result = candidate
+                    chart_choice = None
                     tool_output = json.dumps(
                         {
                             "accepted": True,
@@ -985,6 +1366,43 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     tool_output = (
                         "ERROR: Could not create paired scatter rows. Confirm both datasets were "
                         "fetched and each has one numeric observation for every requested join key."
+                    )
+            elif function_name == "configure_chart":
+                current_result = response_result(
+                    last_fetch,
+                    context_result,
+                    None,
+                    composed_result,
+                )
+                current_rows = current_result.get("rows") if current_result else None
+                current_dataset = current_result.get("dataset") if current_result else None
+                current_title = (
+                    str((current_dataset or {}).get("title") or "Eurostat data")
+                    if isinstance(current_dataset, dict)
+                    else "Eurostat data"
+                )
+                candidate = (
+                    _validated_chart_choice(current_rows, current_title, parsed_arguments)
+                    if isinstance(current_rows, list)
+                    else None
+                )
+                if candidate:
+                    chart_choice = candidate
+                    tool_output = json.dumps(
+                        {
+                            "accepted": True,
+                            "type": candidate["type"],
+                            "purpose": candidate["purpose"],
+                            "x": candidate.get("x"),
+                            "y": candidate.get("y"),
+                            "message": "Validated chart configuration is ready.",
+                        }
+                    )
+                else:
+                    tool_output = (
+                        "ERROR: The requested chart is incompatible with the available fields or "
+                        "observation grain. Choose fields and a chart type supported by the loaded "
+                        "rows, or use type=auto with the intended analytical purpose."
                     )
             else:
                 tool_output = call_tool(function_name, raw_arguments)
@@ -1021,6 +1439,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 last_fetch = {"arguments": parsed_arguments, "output": parsed_output}
                 fetch_records.append(last_fetch)
                 composed_result = None
+                chart_choice = None
             messages.append(
                 {
                     "role": "tool",
@@ -1039,7 +1458,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         "result": response_result(
             last_fetch,
             context_result,
-            None,
+            chart_choice,
             composed_result,
         ),
         "tool_calls": tool_call_count,

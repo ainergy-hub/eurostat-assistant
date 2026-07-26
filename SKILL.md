@@ -16,6 +16,7 @@ Use Eurostat as the authoritative source when the user asks for European officia
 5. Ground clarification questions in the discovery: name the search performed, candidate dataset titles and codes, the relevant differences, and a recommended option when one is a better match.
 6. After the measure is resolved, fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`.
 7. Answer from the returned data. Name the dataset code, filters, units, geography, and latest period used. Show the relevant observations in a Markdown table as part of the user-facing response.
+8. When a visualization is requested or materially improves the answer, choose it from the analytical relationship and the validated row shape. Read `references/chart-selection.md` for the chart matrix and guardrails. Reuse loaded rows for chart-only follow-ups instead of fetching again.
 
 Prefer the smallest query that answers the question. Always filter high-cardinality dimensions such as `geo`, `time`, `unit`, `freq`, `sex`, `age`, `nace_r2`, `indic_*`, `siec`, `currency`, or `coicop` before fetching broad data.
 
@@ -84,3 +85,4 @@ Do not treat Eurostat values as versioned historical database snapshots. Eurosta
 
 - `scripts/eurostat_api.py`: Search Eurostat dataset metadata, inspect JSON-stat dimensions, and fetch flattened observations.
 - `references/eurostat-api.md`: Endpoint notes, parameter patterns, and troubleshooting.
+- `references/chart-selection.md`: Supported analytical purposes, chart choices, modifications, and validation guardrails.

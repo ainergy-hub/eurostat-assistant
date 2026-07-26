@@ -104,15 +104,42 @@ class ColumnInfo(BaseModel):
 
 
 class ChartIntent(BaseModel):
-    type: Literal["none", "line", "bar", "scatter"]
+    type: Literal[
+        "none",
+        "line",
+        "area",
+        "bar",
+        "dot",
+        "scatter",
+        "heatmap",
+        "histogram",
+        "boxplot",
+    ]
+    purpose: Literal[
+        "trend",
+        "comparison",
+        "relationship",
+        "distribution",
+        "composition",
+        "change",
+    ] | None = None
     orientation: Literal["horizontal", "vertical"] | None = None
     x: str | None = None
     y: str | None = None
+    color: str | None = None
+    size: str | None = None
     x_label: str | None = None
     y_label: str | None = None
     series: str | None = None
     label: str | None = None
     title: str | None = None
+    stack: Literal["none", "stacked", "normalize"] = "none"
+    sort: Literal["natural", "ascending", "descending"] = "natural"
+    top_n: int | None = Field(default=None, ge=1, le=50)
+    trendline: Literal["none", "linear"] = "none"
+    labels: Literal["hover", "always"] = "hover"
+    scale: Literal["linear", "log"] = "linear"
+    zero_baseline: bool | Literal["auto"] = "auto"
 
 
 class DataResult(BaseModel):
@@ -214,6 +241,7 @@ def _agent_config() -> AgentConfig:
     return AgentConfig(
         model=_model_name(),
         skill_path=ROOT / "SKILL.md",
+        chart_reference_path=ROOT / "references" / "chart-selection.md",
         helper_path=ROOT / "scripts" / "eurostat_api.py",
         sandbox_agent_path=ROOT / "app" / "sandbox_agent.py",
     )

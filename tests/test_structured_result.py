@@ -200,6 +200,106 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertNotIn("choose_chart", tool_names)
 
+    def test_configure_chart_tool_exposes_bounded_chart_modifications(self) -> None:
+        configure_chart = next(
+            tool["function"] for tool in TOOLS if tool["function"]["name"] == "configure_chart"
+        )
+
+        properties = configure_chart["parameters"]["properties"]
+        self.assertIn("auto", properties["type"]["enum"])
+        self.assertIn("heatmap", properties["type"]["enum"])
+        self.assertIn("distribution", properties["purpose"]["enum"])
+        self.assertEqual(properties["top_n"]["maximum"], 50)
+        self.assertFalse(configure_chart["parameters"]["additionalProperties"])
+
+    def test_auto_distribution_choice_resolves_to_histogram(self) -> None:
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "purpose": "distribution",
+                "type": "auto",
+                "x": "value",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "histogram")
+        self.assertEqual(result["chart"]["purpose"], "distribution")
+        self.assertEqual(result["chart"]["x"], "value")
+        ChatResponse(answer="Distribution.", result=result)
+
+    def test_auto_comparison_uses_dot_plot_for_many_categories(self) -> None:
+        self.fetch_record["output"]["rows"] = [
+            {"geo_label": f"Country {index}", "value": index}
+            for index in range(15)
+        ]
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "purpose": "comparison",
+                "type": "auto",
+                "x": "geo_label",
+                "y": "value",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "dot")
+
+    def test_heatmap_requires_two_dimensions_and_numeric_color(self) -> None:
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "purpose": "relationship",
+                "type": "heatmap",
+                "x": "time_label",
+                "y": "geo_label",
+                "color": "value",
+                "top_n": 10,
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "heatmap")
+        self.assertEqual(result["chart"]["color"], "value")
+        self.assertEqual(result["chart"]["top_n"], 10)
+
+    def test_composition_choice_adds_normalized_stacking(self) -> None:
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "purpose": "composition",
+                "type": "bar",
+                "x": "time_label",
+                "y": "value",
+                "series": "geo_label",
+                "stack": "normalize",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "bar")
+        self.assertEqual(result["chart"]["stack"], "normalize")
+        self.assertEqual(result["chart"]["series"], "geo_label")
+        self.assertTrue(result["chart"]["zero_baseline"])
+
+    def test_log_scale_falls_back_for_nonpositive_values(self) -> None:
+        self.fetch_record["output"]["rows"][0]["value"] = 0
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "purpose": "trend",
+                "type": "line",
+                "x": "time_label",
+                "y": "value",
+                "series": "geo_label",
+                "scale": "log",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["scale"], "linear")
+
     def test_two_fetched_measures_build_a_paired_scatter_and_table(self) -> None:
         gdp_fetch = {
             "arguments": {
@@ -473,6 +573,13 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(messages[2]["content"], "Question 2")
         self.assertEqual(messages[-1]["content"], "What changed next?")
 
+    def test_system_prompt_includes_chart_selection_and_configuration_rules(self) -> None:
+        messages = build_messages({"query": "Show the distribution."})
+
+        self.assertIn("Chart selection", messages[0]["content"])
+        self.assertIn("configure_chart", messages[0]["content"])
+        self.assertIn("histogram", messages[0]["content"])
+
     def test_public_request_contract_bounds_recent_context(self) -> None:
         request = ChatRequest(
             message="Continue the comparison.",
@@ -558,6 +665,61 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertEqual(response["tool_calls"], 0)
         self.assertEqual(response["result"], context_result)
+
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_agent_can_configure_reusable_rows_without_fetching(self, chat_mock) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "configure-chart",
+                                    "function": {
+                                        "name": "configure_chart",
+                                        "arguments": json.dumps(
+                                            {
+                                                "purpose": "relationship",
+                                                "type": "heatmap",
+                                                "x": "time_label",
+                                                "y": "geo_label",
+                                                "color": "value",
+                                                "labels": "hover",
+                                            }
+                                        ),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "The loaded observations are now shown as a heatmap.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run(
+            {
+                "query": "Turn the existing result into a heatmap.",
+                "context_result": context_result,
+            }
+        )
+
+        self.assertEqual(response["tool_calls"], 1)
+        self.assertEqual(response["tool_call_details"][0]["name"], "configure_chart")
+        self.assertEqual(response["result"]["chart"]["type"], "heatmap")
+        self.assertEqual(response["result"]["rows"], context_result["rows"])
 
     @patch("app.sandbox_agent.call_tool")
     @patch("app.sandbox_agent.openrouter_chat")
