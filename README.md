@@ -49,7 +49,7 @@ sandboxed agent.
 - `app/sandbox_agent.py`: allow-listed tool-calling agent executed inside E2B.
 - `app/e2b_agent.py`: E2B lifecycle, event streaming, and result handling.
 - `app/main.py`: FastAPI endpoints and validated public response models.
-- `static/`: dependency-free browser UI, investigation state, charts, tables, and CSV export.
+- `static/`: browser UI, investigation state, Vega-Lite charts, tables, and CSV export.
 - `tests/`: helper, response-contract, chart, Markdown, and browser-state tests.
 
 ## Use the Codex skill
@@ -154,6 +154,10 @@ public so Railway can verify a locked deployment, but it exposes only service re
    model-selected chart fields, and derives a safe default chart when needed.
 6. FastAPI validates the public result before the browser renders it. The browser does not execute
    model-authored HTML or JavaScript.
+
+The browser translates the validated `chart` contract into a bounded Vega-Lite specification and
+renders it as SVG with Vega-Embed. Vega 6.2.0, Vega-Lite 6.4.3, and Vega-Embed 7.1.0 are loaded from
+the jsDelivr CDN; the model never supplies arbitrary Vega-Lite specifications.
 
 Complete display history stays in browser storage. The agent receives the six most recent messages,
 a summary of at most 2,400 characters, and (when available) the latest chart's validated result.

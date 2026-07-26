@@ -5,7 +5,7 @@ import {
   recentHistory,
   titleFromPrompt,
 } from "./chat_state.js";
-import { createChartSection } from "./chart.js";
+import { createChartSection, finalizeChartViews } from "./chart.js";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;
@@ -45,11 +45,22 @@ const toolCallDialogClose = document.querySelector("#tool-call-dialog-close");
 const toolCallDialogSummary = document.querySelector("#tool-call-dialog-summary");
 const toolCallDetails = document.querySelector("#tool-call-details");
 const downloadChatLogButton = document.querySelector("#download-chat-log");
+const themeToggleButton = document.querySelector("#theme-toggle");
+const themeApi = globalThis.EurostatTheme;
 
 let state = loadState();
 let inFlightChatId = null;
 let currentToolCalls = [];
 let lockEnabled = false;
+
+function syncThemeToggle() {
+  const isDark = document.documentElement.dataset.theme === themeApi.DARK;
+  const nextTheme = isDark ? "light" : "dark";
+  themeToggleButton.querySelector(".theme-toggle-label").textContent = `${nextTheme[0].toUpperCase()}${nextTheme.slice(1)} mode`;
+  themeToggleButton.querySelector(".theme-toggle-icon").textContent = isDark ? "☀" : "◐";
+  themeToggleButton.setAttribute("aria-label", `Use ${nextTheme} mode`);
+  themeToggleButton.title = `Use ${nextTheme} mode`;
+}
 
 function showAppLock(message = "") {
   appLayout.inert = true;
@@ -749,6 +760,7 @@ function addResponse(answerText, result, toolCalls, details = [], shouldScroll =
 function renderWorkspace() {
   const record = activeChat();
   if (!record) return;
+  finalizeChartViews(chat);
   chat.replaceChildren();
   hero.hidden = record.messages.length > 0;
   currentChatTitle.textContent = record.title;
@@ -954,6 +966,11 @@ promptInput.addEventListener("keydown", (event) => {
 });
 
 newChatButton.addEventListener("click", createChat);
+themeToggleButton.addEventListener("click", () => {
+  themeApi.toggleTheme();
+  syncThemeToggle();
+  renderWorkspace();
+});
 downloadChatLogButton.addEventListener("click", downloadCurrentChatLog);
 menuButton.addEventListener("click", openSidebar);
 sidebarClose.addEventListener("click", closeSidebar);
@@ -964,12 +981,19 @@ toolCallDialog.addEventListener("click", (event) => {
   if (event.target === toolCallDialog) toolCallDialog.close();
 });
 window.addEventListener("storage", (event) => {
+  if (event.key === themeApi.STORAGE_KEY) {
+    themeApi.applyTheme(themeApi.loadTheme() || themeApi.systemTheme());
+    syncThemeToggle();
+    renderWorkspace();
+    return;
+  }
   if (event.key !== STORAGE_KEY) return;
   state = loadState();
   renderWorkspace();
 });
 
 async function initializeApp() {
+  syncThemeToggle();
   if (await checkAuth()) {
     renderWorkspace();
     await checkHealth();

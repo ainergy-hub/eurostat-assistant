@@ -17,6 +17,19 @@
   --color-warning-soft: #f7ead2;
   --color-error: #ba3f5b;
   --color-error-soft: #f8e2e7;
+  --color-input: #fff;
+  --color-sidebar-hover: rgba(251, 251, 246, 0.72);
+  --color-backdrop: rgba(26, 26, 26, 0.45);
+  --chart-series-1: #ff4f00;
+  --chart-series-2: #25764c;
+  --chart-series-3: #545c78;
+  --chart-series-4: #a66b1f;
+  --chart-series-5: #7b557c;
+  --chart-series-6: #357a78;
+  --chart-grid: #e5e5e0;
+  --chart-axis: #a8a8a0;
+  --chart-text: #6b6b65;
+  --chart-point-outline: #fbfbf6;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
   --font-text: "IBM Plex Serif", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --space-1: 4px;
@@ -30,6 +43,42 @@
   --border-hairline: 1px solid var(--color-border);
   --shadow-crisp: 0 1px 0 rgba(26, 26, 26, 0.05);
   --shadow-flat: 0 8px 24px rgba(26, 26, 26, 0.04);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #141412;
+  --color-surface: #1c1c1a;
+  --color-panel: #20201d;
+  --color-border: #3a3a35;
+  --color-border-light: #2b2b27;
+  --color-text-primary: #e8e8e2;
+  --color-text-muted: #aaa9a0;
+  --color-text-faint: #77776f;
+  --color-accent: #ff5a10;
+  --color-accent-dim: #ff7b3d;
+  --color-accent-soft: #3b2118;
+  --color-good: #70c38f;
+  --color-good-soft: #183326;
+  --color-warning: #dfb356;
+  --color-warning-soft: #352b18;
+  --color-error: #ed7893;
+  --color-error-soft: #3b1f28;
+  --color-input: #181816;
+  --color-sidebar-hover: rgba(32, 32, 29, 0.72);
+  --color-backdrop: rgba(0, 0, 0, 0.64);
+  --chart-series-1: #ff6a27;
+  --chart-series-2: #70c38f;
+  --chart-series-3: #9da9e8;
+  --chart-series-4: #dfb356;
+  --chart-series-5: #c58bc7;
+  --chart-series-6: #65b9b5;
+  --chart-grid: #32322d;
+  --chart-axis: #77776f;
+  --chart-text: #aaa9a0;
+  --chart-point-outline: #20201d;
+  --shadow-crisp: 0 1px 0 rgba(0, 0, 0, 0.24);
+  --shadow-flat: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 * {
@@ -72,7 +121,10 @@ body {
   place-items: center;
   overflow-y: auto;
   background:
-    linear-gradient(rgba(245, 245, 240, 0.94), rgba(245, 245, 240, 0.98)),
+    linear-gradient(
+      color-mix(in srgb, var(--color-bg) 94%, transparent),
+      color-mix(in srgb, var(--color-bg) 98%, transparent)
+    ),
     radial-gradient(circle, var(--color-border) 1px, transparent 1px);
   background-size: auto, 24px 24px;
   padding: var(--space-5);
@@ -127,7 +179,7 @@ body {
   width: 100%;
   min-height: 50px;
   border: var(--border-hairline);
-  background: #fff;
+  background: var(--color-input);
   color: var(--color-text-primary);
   padding: 0 var(--space-4);
 }
@@ -435,7 +487,7 @@ th {
 
 .chat-list-item:hover {
   border-color: transparent;
-  background: rgba(251, 251, 246, 0.72);
+  background: var(--color-sidebar-hover);
 }
 
 .chat-list-item.active {
@@ -584,6 +636,7 @@ th {
   text-transform: uppercase;
 }
 
+.theme-toggle-button,
 .download-log-button,
 .lock-app-button {
   min-height: 34px;
@@ -601,13 +654,23 @@ th {
   text-transform: uppercase;
 }
 
+.theme-toggle-button:hover,
 .download-log-button:hover,
 .lock-app-button:hover {
   border-color: var(--color-text-primary);
 }
 
+.theme-toggle-button,
 .lock-app-button {
   background: transparent;
+}
+
+.theme-toggle-icon {
+  width: 1em;
+  color: var(--color-accent);
+  font-size: 0.9rem;
+  line-height: 1;
+  text-align: center;
 }
 
 .download-log-button:disabled {
@@ -974,6 +1037,8 @@ button.tool-call-count:hover {
 
 .chart-wrap {
   position: relative;
+  display: grid;
+  align-items: center;
   min-height: 360px;
   overflow: hidden;
   border: 0;
@@ -981,7 +1046,14 @@ button.tool-call-count:hover {
   padding: var(--space-3);
 }
 
-.chart-wrap svg {
+.chart-view,
+.chart-view .vega-embed,
+.chart-view .vega-embed > div {
+  width: 100%;
+}
+
+.chart-view svg {
+  display: block;
   width: 100%;
   height: auto;
   min-height: 340px;
@@ -993,42 +1065,69 @@ button.tool-call-count:hover {
   overflow: auto;
 }
 
-.chart-horizontal svg {
+.chart-horizontal .chart-view svg {
   min-height: 0;
 }
 
-.chart-tooltip {
-  position: absolute;
-  z-index: 3;
-  max-width: 240px;
-  border: 1px solid var(--color-text-primary);
-  background: var(--color-text-primary);
-  color: var(--color-panel);
-  padding: var(--space-2) var(--space-3);
-  font-size: 0.68rem;
-  line-height: 1.45;
-  pointer-events: none;
-  transform: translate(-50%, calc(-100% - 10px));
-}
-
-.chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  margin: var(--space-3) 0 0 56px;
+.chart-loading,
+.chart-error {
+  margin: 0;
   color: var(--color-text-muted);
   font-size: 0.68rem;
+  text-align: center;
 }
 
-.legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.chart-error {
+  color: var(--color-error);
 }
 
-.legend-swatch {
-  width: 18px;
-  height: 3px;
+.chart-view .vega-embed summary {
+  color: var(--color-text-muted);
+}
+
+.vg-tooltip {
+  width: max-content !important;
+  max-width: min(320px, calc(100vw - 24px)) !important;
+  border: 1px solid var(--color-border) !important;
+  border-radius: 0 !important;
+  background: var(--color-panel) !important;
+  color: var(--color-text-primary) !important;
+  box-shadow: none !important;
+  padding: 7px 9px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 0.68rem !important;
+}
+
+.vg-tooltip table {
+  width: auto !important;
+  min-width: 0 !important;
+  border-collapse: collapse !important;
+  background: transparent !important;
+  font: inherit !important;
+  white-space: nowrap !important;
+}
+
+.vg-tooltip th,
+.vg-tooltip td {
+  position: static !important;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 2px 0 !important;
+  color: inherit !important;
+  font: inherit !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.vg-tooltip td.key {
+  padding-right: 12px !important;
+  color: var(--color-text-muted) !important;
+  text-align: right !important;
+}
+
+.vg-tooltip td.value {
+  color: var(--color-text-primary) !important;
+  text-align: left !important;
 }
 
 .table-tools {
@@ -1269,7 +1368,7 @@ tbody tr:last-child td {
   bottom: 0;
   border: var(--border-hairline);
   background: var(--color-panel);
-  box-shadow: 0 -8px 22px rgba(26, 26, 26, 0.045);
+  box-shadow: 0 -8px 22px color-mix(in srgb, var(--color-text-primary) 4.5%, transparent);
   margin-top: var(--space-5);
   padding: var(--space-3);
 }
@@ -1354,12 +1453,12 @@ footer a:hover {
   border: var(--border-hairline);
   background: var(--color-panel);
   color: var(--color-text-primary);
-  box-shadow: 0 22px 64px rgba(26, 26, 26, 0.18);
+  box-shadow: 0 22px 64px color-mix(in srgb, var(--color-text-primary) 18%, transparent);
   padding: 0;
 }
 
 .tool-call-dialog::backdrop {
-  background: rgba(26, 26, 26, 0.45);
+  background: var(--color-backdrop);
 }
 
 .tool-call-dialog-header {
@@ -1538,7 +1637,7 @@ footer a:hover {
     position: fixed;
     left: 0;
     width: min(310px, calc(100vw - 44px));
-    box-shadow: 8px 0 0 rgba(26, 26, 26, 0.16);
+    box-shadow: 8px 0 0 color-mix(in srgb, var(--color-text-primary) 16%, transparent);
     transform: translateX(-102%);
     transition: transform 180ms ease;
   }
@@ -1554,7 +1653,7 @@ footer a:hover {
     inset: 0;
     display: block;
     border: 0;
-    background: rgba(26, 26, 26, 0.42);
+    background: var(--color-backdrop);
     opacity: 0;
     pointer-events: none;
     transition: opacity 180ms ease;
@@ -1600,6 +1699,7 @@ footer a:hover {
     display: none;
   }
 
+  .theme-toggle-label,
   .download-log-button > span:first-child,
   .lock-app-button > span:first-child {
     position: absolute;
@@ -1610,6 +1710,7 @@ footer a:hover {
     white-space: nowrap;
   }
 
+  .theme-toggle-button,
   .download-log-button,
   .lock-app-button {
     width: 34px;
@@ -1696,12 +1797,15 @@ footer a:hover {
     padding: 0;
   }
 
-  .chart-wrap svg {
+  .chart-view {
     min-width: 680px;
+  }
+
+  .chart-view svg {
     min-height: 280px;
   }
 
-  .chart-horizontal svg {
+  .chart-horizontal .chart-view svg {
     min-height: 0;
   }
 
