@@ -428,8 +428,8 @@ th {
 .chat-list-item {
   min-height: 52px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: stretch;
   border: 1px solid transparent;
 }
 
@@ -446,6 +446,8 @@ th {
 
 .chat-select,
 .chat-delete {
+  min-height: 52px;
+  align-self: stretch;
   border: 0;
   background: transparent;
   color: inherit;
@@ -454,6 +456,7 @@ th {
 
 .chat-select {
   min-width: 0;
+  width: 100%;
   padding: 10px 8px 10px 14px;
   text-align: left;
 }
@@ -478,8 +481,10 @@ th {
 }
 
 .chat-delete {
-  width: 36px;
-  height: 44px;
+  width: 44px;
+  height: auto;
+  display: grid;
+  place-items: center;
   color: transparent;
   font-size: 1.15rem;
 }
@@ -489,8 +494,9 @@ th {
   color: var(--color-text-muted);
 }
 
-.chat-delete:hover {
-  background: var(--color-error-soft);
+.chat-delete:hover,
+.chat-delete:focus-visible {
+  background: transparent;
   color: var(--color-error) !important;
 }
 
