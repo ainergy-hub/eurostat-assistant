@@ -26,7 +26,16 @@ class AppLockTests(unittest.TestCase):
             status.json(),
             {"lock_enabled": True, "authenticated": False},
         )
-        self.assertEqual(self.client.get("/api/health").status_code, 401)
+        self.assertEqual(
+            self.client.post("/api/chat", json={"message": "hello"}).status_code,
+            401,
+        )
+
+    def test_health_check_is_public_when_app_is_locked(self) -> None:
+        response = self.client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
 
     def test_wrong_password_is_rejected(self) -> None:
         response = self.client.post(
@@ -50,7 +59,10 @@ class AppLockTests(unittest.TestCase):
         lock = self.client.post("/api/auth/lock")
 
         self.assertEqual(lock.status_code, 200)
-        self.assertEqual(self.client.get("/api/health").status_code, 401)
+        self.assertEqual(
+            self.client.post("/api/chat", json={"message": "hello"}).status_code,
+            401,
+        )
 
 
 if __name__ == "__main__":

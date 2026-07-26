@@ -116,7 +116,31 @@ Start the app:
 ./run.sh
 ```
 
-Open `http://127.0.0.1:8000`. Set `HOST` or `PORT` in the environment to override the defaults.
+Open `http://127.0.0.1:8000`. The server listens on all interfaces by default. Set `HOST` or
+`PORT` in the environment to override the defaults.
+
+## Deploy to Railway
+
+The repository includes a production `Dockerfile` and `railway.json`. Railway builds the locked
+`uv` environment, starts Uvicorn on the platform-provided `PORT`, and checks `/api/health` before
+promoting a deployment.
+
+1. Create a Railway project and deploy this repository from GitHub, or run `railway up` from the
+   repository root.
+2. Add these service variables in Railway:
+
+   ```dotenv
+   E2B_API_KEY=your_e2b_api_key
+   OPENROUTER_API_KEY=your_openrouter_api_key
+   OPENROUTER_MODEL=openai/gpt-4.1-mini
+   APP_PASSWORD=choose-a-strong-password
+   ```
+
+3. Generate a public domain from the service's **Settings → Networking** page.
+
+Do not set `PORT`; Railway injects it automatically. `OPENROUTER_MODEL` is optional.
+`APP_PASSWORD` is strongly recommended for a public deployment. The health endpoint is intentionally
+public so Railway can verify a locked deployment, but it exposes only service readiness booleans.
 
 ## How the app works
 
@@ -153,7 +177,7 @@ reported values.
 - `GET /api/auth/status`: app-lock status.
 - `POST /api/auth/unlock`: unlock the app with `APP_PASSWORD`.
 - `POST /api/auth/lock`: clear the current app session.
-- `GET /api/health`: service and agent-credential readiness (requires an unlocked session).
+- `GET /api/health`: public service and agent-credential readiness probe.
 - `POST /api/chat`: validated, non-streaming chat response.
 - `POST /api/chat/stream`: newline-delimited status, tool-call, result, and error events.
 

@@ -65,7 +65,11 @@ def _request_is_unlocked(request: Request) -> bool:
 @app.middleware("http")
 async def require_app_unlock(request: Request, call_next):
     path = request.url.path
-    is_public = not path.startswith("/api/") or path.startswith("/api/auth/")
+    is_public = (
+        not path.startswith("/api/")
+        or path.startswith("/api/auth/")
+        or path == "/api/health"
+    )
     if is_public or _request_is_unlocked(request):
         return await call_next(request)
     return JSONResponse(

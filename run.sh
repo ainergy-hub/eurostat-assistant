@@ -35,9 +35,13 @@ case "$OPENROUTER_MODEL" in
 esac
 
 PORT="${PORT:-8000}"
-HOST="${HOST:-127.0.0.1}"
+HOST="${HOST:-0.0.0.0}"
 
 echo "Starting Eurostat Lens on http://${HOST}:${PORT}"
 echo "Using OpenRouter model: ${OPENROUTER_MODEL}"
 
-exec uv run uvicorn app.main:app --host "$HOST" --port "$PORT"
+exec uv run uvicorn app.main:app \
+  --host "$HOST" \
+  --port "$PORT" \
+  --proxy-headers \
+  --forwarded-allow-ips="*"
