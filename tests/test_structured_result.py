@@ -7,9 +7,11 @@ from unittest.mock import patch
 from app.main import ChatRequest, ChatResponse
 from app.sandbox_agent import (
     MAX_EVENT_PREVIEW_CHARS,
+    MAX_TOOL_CALLS,
     MAX_TOOL_ROUNDS,
     TOOLS,
     build_messages,
+    build_scatter_result,
     build_structured_result,
     response_result,
     run,
@@ -168,15 +170,251 @@ class StructuredResultTests(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["chart"]["type"], "line")
 
-    def test_choose_chart_tool_lists_scatter(self) -> None:
-        choose_chart = next(
-            tool["function"] for tool in TOOLS if tool["function"]["name"] == "choose_chart"
+    def test_redundant_choose_chart_tool_is_not_exposed(self) -> None:
+        tool_names = {tool["function"]["name"] for tool in TOOLS}
+
+        self.assertNotIn("choose_chart", tool_names)
+
+    def test_two_fetched_measures_build_a_paired_scatter_and_table(self) -> None:
+        gdp_fetch = {
+            "arguments": {
+                "dataset": "sdg_10_10",
+                "params": ["indic_ppp=EXP_PPS_EU27_2020_HAB"],
+                "last_time_period": 1,
+            },
+            "output": {
+                "metadata": {
+                    "label": "Purchasing power adjusted GDP per capita",
+                    "updated": "2026-03-01T00:00:00+0100",
+                },
+                "rows": [
+                    {
+                        "geo": "DE",
+                        "geo_label": "Germany",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 48_000,
+                    },
+                    {
+                        "geo": "FR",
+                        "geo_label": "France",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 40_700,
+                    },
+                ],
+            },
+        }
+        patent_fetch = {
+            "arguments": {
+                "dataset": "pat_ep_tot",
+                "params": ["unit=P_MHAB", "coop_ptn=APPL"],
+                "last_time_period": 1,
+            },
+            "output": {
+                "metadata": {
+                    "label": "Patent applications to the EPO",
+                    "updated": "2026-03-24T23:00:00+0100",
+                },
+                "rows": [
+                    {
+                        "geo": "DE",
+                        "geo_label": "Germany",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 292.86,
+                    },
+                    {
+                        "geo": "FR",
+                        "geo_label": "France",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 158.70,
+                    },
+                ],
+            },
+        }
+
+        result = build_scatter_result(
+            [gdp_fetch, patent_fetch],
+            {
+                "x_dataset": "sdg_10_10",
+                "y_dataset": "pat_ep_tot",
+                "join_on": ["geo", "time"],
+                "x_label": "GDP per capita (PPS)",
+                "y_label": "Patents per million inhabitants",
+                "title": "GDP per capita and patent applications",
+                "label": "geo_label",
+            },
         )
 
-        self.assertIn(
-            "scatter",
-            choose_chart["parameters"]["properties"]["type"]["enum"],
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "scatter")
+        self.assertEqual(result["chart"]["label"], "geo_label")
+        self.assertEqual(len(result["rows"]), 2)
+        self.assertEqual(len(result["sources"]), 2)
+        self.assertEqual(result["rows"][0]["geo_label"], "Germany")
+        x_field = result["chart"]["x"]
+        y_field = result["chart"]["y"]
+        self.assertEqual(result["rows"][0][x_field], 48_000)
+        self.assertEqual(result["rows"][0][y_field], 292.86)
+        response = ChatResponse(answer="Positive relationship.", result=result)
+        self.assertEqual(len(response.result.sources), 2)
+
+    def test_create_scatter_tool_is_available_for_multi_dataset_relationships(self) -> None:
+        create_scatter = next(
+            tool["function"] for tool in TOOLS if tool["function"]["name"] == "create_scatter"
         )
+
+        self.assertIn("two previously fetched", create_scatter["description"])
+        self.assertIn("join_on", create_scatter["parameters"]["required"])
+
+    @patch("app.sandbox_agent.call_tool")
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_agent_returns_composed_scatter_instead_of_last_fetched_bar(
+        self,
+        chat_mock,
+        tool_mock,
+    ) -> None:
+        gdp_output = {
+            "metadata": {"label": "GDP per capita"},
+            "rows": [
+                {
+                    "geo": "DE",
+                    "geo_label": "Germany",
+                    "time": "2025",
+                    "time_label": "2025",
+                    "value": 48_000,
+                },
+                {
+                    "geo": "FR",
+                    "geo_label": "France",
+                    "time": "2025",
+                    "time_label": "2025",
+                    "value": 40_700,
+                },
+            ],
+        }
+        patents_output = {
+            "metadata": {"label": "Patent applications per million inhabitants"},
+            "rows": [
+                {
+                    "geo": "DE",
+                    "geo_label": "Germany",
+                    "time": "2025",
+                    "time_label": "2025",
+                    "value": 292.86,
+                },
+                {
+                    "geo": "FR",
+                    "geo_label": "France",
+                    "time": "2025",
+                    "time_label": "2025",
+                    "value": 158.70,
+                },
+            ],
+        }
+
+        def tool_output(name: str, raw_arguments: str) -> str:
+            arguments = json.loads(raw_arguments)
+            if name == "fetch_eurostat" and arguments["dataset"] == "sdg_10_10":
+                return json.dumps(gdp_output)
+            if name == "fetch_eurostat" and arguments["dataset"] == "pat_ep_tot":
+                return json.dumps(patents_output)
+            return "{}"
+
+        tool_mock.side_effect = tool_output
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "fetch-gdp",
+                                    "function": {
+                                        "name": "fetch_eurostat",
+                                        "arguments": json.dumps(
+                                            {
+                                                "dataset": "sdg_10_10",
+                                                "last_time_period": 1,
+                                            }
+                                        ),
+                                    },
+                                },
+                                {
+                                    "id": "fetch-patents",
+                                    "function": {
+                                        "name": "fetch_eurostat",
+                                        "arguments": json.dumps(
+                                            {
+                                                "dataset": "pat_ep_tot",
+                                                "last_time_period": 1,
+                                            }
+                                        ),
+                                    },
+                                },
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "make-scatter",
+                                    "function": {
+                                        "name": "create_scatter",
+                                        "arguments": json.dumps(
+                                            {
+                                                "x_dataset": "sdg_10_10",
+                                                "y_dataset": "pat_ep_tot",
+                                                "join_on": ["geo", "time"],
+                                                "x_label": "GDP per capita (PPS)",
+                                                "y_label": "Patents per million inhabitants",
+                                                "title": "GDP per capita and patent applications",
+                                                "label": "geo_label",
+                                            }
+                                        ),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "The paired data show a positive relationship.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run(
+            {
+                "query": (
+                    "Is GDP per capita correlated with patent applications per million "
+                    "inhabitants?"
+                )
+            }
+        )
+
+        assert response["result"] is not None
+        self.assertEqual(response["result"]["chart"]["type"], "scatter")
+        self.assertEqual(response["result"]["dataset"]["code"], "sdg_10_10__pat_ep_tot")
+        self.assertEqual(len(response["result"]["rows"]), 2)
+        self.assertEqual(response["tool_call_details"][-1]["name"], "create_scatter")
+        self.assertEqual(response["tool_call_details"][-1]["status"], "completed")
 
     def test_missing_fetch_has_no_result(self) -> None:
         self.assertIsNone(build_structured_result(None))
@@ -296,6 +534,254 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response["tool_calls"], 0)
         self.assertEqual(response["result"], context_result)
 
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_ambiguous_innovation_proxy_is_clarified_before_tools(self, chat_mock) -> None:
+        response = run(
+            {
+                "query": (
+                    "Is GDP per capita correlated with innovation per capita across EU countries?"
+                )
+            }
+        )
+
+        self.assertEqual(response["tool_calls"], 0)
+        self.assertIn("Which Eurostat measure", response["answer"])
+        chat_mock.assert_not_called()
+
+    @patch("app.sandbox_agent.call_tool", return_value="[]")
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_identical_tool_calls_are_executed_once(self, chat_mock, tool_mock) -> None:
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "search-1",
+                                    "function": {
+                                        "name": "search_eurostat",
+                                        "arguments": '{"query":"population"}',
+                                    },
+                                },
+                                {
+                                    "id": "search-2",
+                                    "function": {
+                                        "name": "search_eurostat",
+                                        "arguments": '{"query":"population"}',
+                                    },
+                                },
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "I found the relevant population candidates.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run({"query": "Find a population dataset."})
+
+        self.assertEqual(response["tool_calls"], 1)
+        self.assertEqual(len(response["tool_call_details"]), 1)
+        self.assertEqual(tool_mock.call_count, 1)
+
+    @patch("app.sandbox_agent.call_tool", return_value="[]")
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_search_budget_stops_reformulation_loop(self, chat_mock, tool_mock) -> None:
+        searches = [
+            {
+                "id": f"search-{index}",
+                "function": {
+                    "name": "search_eurostat",
+                    "arguments": json.dumps({"query": f"innovation proxy {index}"}),
+                },
+            }
+            for index in range(5)
+        ]
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": searches,
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Please choose the intended innovation measure.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run({"query": "Compare explicit patent innovation proxy measures."})
+
+        self.assertEqual(response["tool_calls"], 4)
+        self.assertEqual(tool_mock.call_count, 4)
+        self.assertEqual(len(response["tool_call_details"]), 4)
+        self.assertEqual(chat_mock.call_args_list[-1].args[2], [])
+
+    @patch("app.sandbox_agent.call_tool")
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_invalid_complete_dimension_code_is_rejected_before_fetch(
+        self,
+        chat_mock,
+        tool_mock,
+    ) -> None:
+        dimensions_output = json.dumps(
+            {
+                "dataset": "nama_10_pc",
+                "dimensions": [
+                    {
+                        "id": "unit",
+                        "size": 2,
+                        "sample_categories": [
+                            {"code": "CP_EUR_HAB", "label": "Euro per inhabitant"},
+                            {
+                                "code": "CP_PPS_EU27_2020_HAB",
+                                "label": "PPS per inhabitant",
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+        tool_mock.return_value = dimensions_output
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "inspect",
+                                    "function": {
+                                        "name": "inspect_dimensions",
+                                        "arguments": '{"dataset":"nama_10_pc"}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "fetch",
+                                    "function": {
+                                        "name": "fetch_eurostat",
+                                        "arguments": json.dumps(
+                                            {
+                                                "dataset": "nama_10_pc",
+                                                "params": ["unit=PC_PPS_EU27_2020_HAB"],
+                                            }
+                                        ),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "The requested unit code was invalid.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run({"query": "Use nama_10_pc for GDP per capita."})
+
+        self.assertEqual(response["tool_calls"], 2)
+        self.assertEqual(tool_mock.call_count, 1)
+        self.assertEqual(response["tool_call_details"][-1]["status"], "error")
+        self.assertIn(
+            "CP_PPS_EU27_2020_HAB",
+            response["tool_call_details"][-1]["result_preview"],
+        )
+
+    @patch(
+        "app.sandbox_agent.call_tool",
+        return_value=json.dumps(
+            {
+                "metadata": {
+                    "label": "Population",
+                    "total_rows": 0,
+                    "returned_rows": 0,
+                    "truncated": False,
+                },
+                "rows": [],
+            }
+        ),
+    )
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_zero_row_fetch_is_an_error_and_not_a_result(self, chat_mock, tool_mock) -> None:
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "fetch",
+                                    "function": {
+                                        "name": "fetch_eurostat",
+                                        "arguments": '{"dataset":"demo_pjan","params":["geo=XX"]}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "The filters returned no observations.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run({"query": "Fetch population for an invalid geography."})
+
+        self.assertEqual(response["tool_calls"], 1)
+        self.assertIsNone(response["result"])
+        self.assertEqual(response["tool_call_details"][0]["status"], "error")
+        self.assertEqual(tool_mock.call_count, 1)
+
     @patch("app.sandbox_agent.call_tool", return_value="[]")
     @patch("app.sandbox_agent.openrouter_chat")
     def test_agent_reports_each_individual_tool_call(self, chat_mock, tool_mock) -> None:
@@ -367,8 +853,9 @@ class StructuredResultTests(unittest.TestCase):
         )
         self.assertEqual(tool_mock.call_count, 3)
 
-    def test_agent_round_limit_is_thirty(self) -> None:
-        self.assertEqual(MAX_TOOL_ROUNDS, 30)
+    def test_agent_has_bounded_round_and_tool_limits(self) -> None:
+        self.assertEqual(MAX_TOOL_ROUNDS, 12)
+        self.assertEqual(MAX_TOOL_CALLS, 12)
 
     def test_tool_result_preview_respects_public_contract(self) -> None:
         preview = tool_output_preview("x" * (MAX_EVENT_PREVIEW_CHARS + 20))

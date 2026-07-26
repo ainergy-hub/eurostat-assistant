@@ -9,13 +9,16 @@ description: Find relevant Eurostat datasets and fetch official Eurostat data fo
 
 Use Eurostat as the authoritative source when the user asks for European official statistics or explicitly asks for Eurostat data.
 
-1. Clarify the statistical concept, geography, time range, and unit if the prompt is ambiguous enough to change the answer.
-2. Search for candidate datasets with `scripts/eurostat_api.py search "<topic>"`.
-3. Inspect the most promising dataset with `scripts/eurostat_api.py dimensions <dataset_code>`.
-4. Fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`.
-5. Answer from the returned data. Name the dataset code, filters, units, geography, and latest period used. Show the relevant observations in a Markdown table as part of the user-facing response.
+1. Clarify the statistical concept, geography, time range, and unit before using tools if the ambiguity could change the answer. Broad concepts such as "innovation" require the user to choose a proxy such as patents, R&D expenditure, researchers, or an innovation-survey indicator.
+2. Reuse compatible structured Eurostat rows already present in the conversation. Do not search, inspect, or fetch the same data again.
+3. If the user supplied an exact dataset code, inspect it directly. Otherwise search for candidate datasets with `scripts/eurostat_api.py search "<topic>"`.
+4. Inspect the most promising dataset with `scripts/eurostat_api.py dimensions <dataset_code>`.
+5. Fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`.
+6. Answer from the returned data. Name the dataset code, filters, units, geography, and latest period used. Show the relevant observations in a Markdown table as part of the user-facing response.
 
 Prefer the smallest query that answers the question. Always filter high-cardinality dimensions such as `geo`, `time`, `unit`, `freq`, `sex`, `age`, `nace_r2`, `indic_*`, `siec`, `currency`, or `coicop` before fetching broad data.
+
+Use at most two catalogue searches per requested measure. Do not repeat identical tool calls. If two searches do not identify a credible dataset, stop and ask the user to choose from the closest candidates. After a zero-row fetch or invalid filter, correct the filters using the inspected dimension codes instead of restarting dataset search.
 
 ## Quick Start
 

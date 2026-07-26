@@ -22,7 +22,9 @@ Eurostat Lens can:
 - preserve the dataset code, title, applied filters, update date, flags, and reproducible API URL;
 - return up to 500 observations in a sortable, filterable table with CSV export;
 - render line charts, horizontal or vertical bar charts, and scatter plots;
+- pair two filtered measures by shared geography/period keys for correlation scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
+- stop ambiguous measure requests before lookup and bound repeated searches, inspections, and fetches;
 - keep up to 30 separate investigations in local browser storage;
 - carry recent conversational context and a compact summary into follow-up questions;
 - reuse the most recent chart's validated rows for follow-ups without fetching the same API data again.
@@ -118,7 +120,7 @@ Open `http://127.0.0.1:8000`. Set `HOST` or `PORT` in the environment to overrid
    messages, and the most recent structured chart result to `POST /api/chat/stream`.
 2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
 3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
-   and chart selection.
+   and paired scatter composition.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
 5. The host preserves the latest fetched slice as structured rows and provenance, validates any
    model-selected chart fields, and derives a safe default chart when needed.
@@ -130,6 +132,10 @@ a summary of at most 2,400 characters, and (when available) the latest chart's v
 The structured result is treated as reusable Eurostat tool output, so follow-ups that are answerable
 from those rows do not repeat dataset search, dimension inspection, or the data fetch. A different
 dataset, filter, geography, time range, or unavailable fact still triggers a new lookup.
+
+The agent executes at most 12 unique tools per request, with smaller per-tool ceilings. Identical
+calls reuse their earlier output, invalid complete-dimension filters are rejected before an API
+request, and zero-row fetches do not become public results.
 
 Use **Download log** in the current investigation header to export a local JSON diagnostic log.
 The export contains the chat, dataset and filter metadata, tool-call status, timing for new
@@ -156,6 +162,7 @@ A successful chat result follows this public contract:
       "updated": "2026-07-09T11:00:00+0200",
       "source_url": "https://ec.europa.eu/eurostat/api/..."
     },
+    "sources": [],
     "filters": {
       "geo": ["DE", "FR"],
       "sex": ["T"],
@@ -181,6 +188,10 @@ A successful chat result follows this public contract:
 
 When the agent needs clarification or cannot fetch observations, `result` can be `null` while
 `answer` remains conversational.
+
+For correlation questions spanning two datasets, the agent joins observations on shared keys such
+as geography and period. The result uses `chart.type: "scatter"`, includes both numeric measures in
+each table row, and lists both Eurostat datasets in `sources`.
 
 ## Tests
 

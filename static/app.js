@@ -599,9 +599,9 @@ function downloadCsv(result, columns) {
 
 function createProvenance(result) {
   const section = element("section", "provenance");
-  section.appendChild(element("h2", "", "Source"));
+  const sources = result.sources?.length ? result.sources : [result.dataset || {}];
+  section.appendChild(element("h2", "", sources.length > 1 ? "Sources" : "Source"));
   const grid = element("div", "source-grid");
-  const dataset = result.dataset || {};
 
   function sourceItem(label, valueNode) {
     const item = element("div", "source-item");
@@ -615,13 +615,16 @@ function createProvenance(result) {
     return item;
   }
 
-  const sourceLink = element("a", "", `${dataset.code || "Dataset"} ↗`);
-  sourceLink.href = dataset.source_url;
-  sourceLink.target = "_blank";
-  sourceLink.rel = "noreferrer";
-  grid.appendChild(sourceItem("Eurostat dataset", sourceLink));
-  grid.appendChild(sourceItem("Title", dataset.title));
-  grid.appendChild(sourceItem("Updated", dataset.updated || "Not reported"));
+  sources.forEach((dataset, index) => {
+    const sourceLink = element("a", "", `${dataset.code || "Dataset"} ↗`);
+    sourceLink.href = dataset.source_url;
+    sourceLink.target = "_blank";
+    sourceLink.rel = "noreferrer";
+    const suffix = sources.length > 1 ? ` ${index + 1}` : "";
+    grid.appendChild(sourceItem(`Eurostat dataset${suffix}`, sourceLink));
+    grid.appendChild(sourceItem(`Title${suffix}`, dataset.title));
+    grid.appendChild(sourceItem(`Updated${suffix}`, dataset.updated || "Not reported"));
+  });
 
   const chips = element("div", "filter-chips");
   Object.entries(result.filters || {}).forEach(([key, values]) => {

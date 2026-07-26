@@ -13,16 +13,47 @@ import argparse
 import csv
 import io
 import json
+import re
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 
 BASE = "https://ec.europa.eu/eurostat/api/dissemination"
 TOC_URL = f"{BASE}/catalogue/toc/txt?lang=en"
 DATA_URL = f"{BASE}/statistics/1.0/data"
+SEARCH_STOP_WORDS = {
+    "a",
+    "across",
+    "all",
+    "and",
+    "at",
+    "by",
+    "for",
+    "from",
+    "in",
+    "of",
+    "on",
+    "per",
+    "the",
+    "to",
+    "total",
+    "with",
+}
+SEARCH_MODIFIER_WORDS = {
+    "annual",
+    "capita",
+    "country",
+    "inhabitant",
+    "level",
+    "million",
+    "monthly",
+    "quarterly",
+    "region",
+}
 
 
 def get_text(url: str) -> str:
@@ -66,17 +97,83 @@ def parse_toc(text: str) -> list[dict[str, str]]:
     return rows
 
 
-def search_catalog(query: str, limit: int) -> None:
-    terms = [term.casefold() for term in query.split() if term.strip()]
-    human_population_query = "population" in terms and not {"animal", "livestock", "bovine", "pig", "goat"}.intersection(terms)
+def _stem_token(token: str) -> str:
+    if len(token) > 4 and token.endswith("ies"):
+        return f"{token[:-3]}y"
+    if len(token) > 4 and token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+def _tokens(value: str) -> list[str]:
+    return [
+        _stem_token(token)
+        for token in re.findall(r"[a-z0-9]+", value.casefold())
+        if token not in SEARCH_STOP_WORDS
+    ]
+
+
+def rank_catalog(
+    rows: list[dict[str, str]],
+    query: str,
+    limit: int,
+) -> list[dict[str, str]]:
+    query_terms = _tokens(query)
+    if not query_terms:
+        return []
+    query_set = set(query_terms)
+    core_query_set = query_set - SEARCH_MODIFIER_WORDS
+    normalized_query = re.sub(r"[^a-z0-9]+", "_", query.casefold()).strip("_")
+    human_population_query = "population" in query_set and not {
+        "animal",
+        "livestock",
+        "bovine",
+        "pig",
+        "goat",
+    }.intersection(query_set)
     seen: set[str] = set()
-    matches = []
-    for row in parse_toc(get_text(TOC_URL)):
+    matches: list[tuple[float, float, dict[str, str]]] = []
+    for row in rows:
         if row["code"] in seen or row["type"] not in {"dataset", "table"}:
             continue
         seen.add(row["code"])
-        haystack = f"{row['code']} {row['title']}".casefold()
-        score = sum(3 if term in row["code"].casefold() else 1 for term in terms if term in haystack)
+
+        code = row["code"].casefold()
+        code_terms = set(_tokens(code))
+        title_terms = set(_tokens(row["title"]))
+        matched = query_set & (code_terms | title_terms)
+        matched_core = core_query_set.intersection(matched)
+        minimum_core_matches = 2 if len(core_query_set) >= 3 else 1
+        if not matched or (
+            core_query_set and len(matched_core) < minimum_core_matches
+        ):
+            continue
+
+        coverage = len(matched) / len(query_set)
+        score = sum(
+            4.0 if term in code_terms else 2.0
+            for term in matched
+        )
+        score += coverage * 4
+        if normalized_query == code:
+            score += 100
+        normalized_title = " ".join(_tokens(row["title"]))
+        normalized_terms = " ".join(query_terms)
+        if normalized_terms and normalized_terms in normalized_title:
+            score += 8
+        end_match = re.match(r"(\d{4})", row.get("data_end", ""))
+        if end_match:
+            end_year = int(end_match.group(1))
+            if end_year >= 2024:
+                score += 3
+            elif end_year < 2020:
+                score -= 2
+        if "per capita" in query.casefold():
+            title = row["title"].casefold()
+            if any(term in title for term in ("country", "national level")):
+                score += 2
+            if any(term in title for term in ("metropolitan region", "nuts 3")):
+                score -= 2
         if row["type"] == "dataset":
             score += 0.25
         if human_population_query:
@@ -91,10 +188,26 @@ def search_catalog(query: str, limit: int) -> None:
                 score += 2
             if any(word in title for word in ("animal", "bovine", "pig", "goat", "hens", "livestock")):
                 score -= 2
-        if score:
-            matches.append((score, row))
-    matches.sort(key=lambda pair: (-pair[0], pair[1]["code"]))
-    print(json.dumps([row for _, row in matches[:limit]], indent=2, ensure_ascii=False))
+        matches.append((score, coverage, row))
+
+    matches.sort(key=lambda item: (-item[0], -item[1], item[2]["code"]))
+    return [row for _, _, row in matches[:limit]]
+
+
+def _catalog_text(cache_file: str | None) -> str:
+    cache_path = Path(cache_file) if cache_file else None
+    if cache_path and cache_path.exists():
+        return cache_path.read_text(encoding="utf-8")
+
+    text = get_text(TOC_URL)
+    if cache_path:
+        cache_path.write_text(text, encoding="utf-8")
+    return text
+
+
+def search_catalog(query: str, limit: int, cache_file: str | None = None) -> None:
+    rows = parse_toc(_catalog_text(cache_file))
+    print(json.dumps(rank_catalog(rows, query, limit), indent=2, ensure_ascii=False))
 
 
 def build_url(dataset: str, params: list[tuple[str, str]]) -> str:
@@ -233,7 +346,11 @@ def main() -> None:
 
     search = sub.add_parser("search", help="Search Eurostat table-of-contents metadata.")
     search.add_argument("query")
-    search.add_argument("--limit", type=int, default=12)
+    search.add_argument("--limit", type=int, default=5)
+    search.add_argument(
+        "--cache-file",
+        help="Optional catalogue cache file, useful when several searches run in one investigation.",
+    )
 
     dims = sub.add_parser("dimensions", help="Inspect dataset dimensions with one recent period.")
     dims.add_argument("dataset")
@@ -253,7 +370,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "search":
-        search_catalog(args.query, args.limit)
+        search_catalog(args.query, args.limit, args.cache_file)
     elif args.command == "dimensions":
         dimensions(args.dataset)
     elif args.command == "fetch":

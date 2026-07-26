@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.eurostat_api import build_url, coords_from_index, flatten
+from scripts.eurostat_api import build_url, coords_from_index, flatten, rank_catalog
 
 
 class EurostatApiTests(unittest.TestCase):
@@ -45,6 +45,58 @@ class EurostatApiTests(unittest.TestCase):
 
         self.assertIn("geo=DE", url)
         self.assertIn("geo=FR", url)
+
+    def test_search_ignores_per_substrings_and_prioritizes_patents(self) -> None:
+        rows = [
+            {
+                "code": "cens_01ndpercons",
+                "title": "Owner-occupied dwellings by type and year of construction",
+                "type": "dataset",
+            },
+            {
+                "code": "crim_crt_per",
+                "title": "Persons brought before criminal courts",
+                "type": "dataset",
+            },
+            {
+                "code": "pat_ep_tot",
+                "title": "Patent applications to the EPO by country of applicants and inventors",
+                "type": "dataset",
+                "data_end": "2025",
+            },
+            {
+                "code": "met_pat_epipc",
+                "title": (
+                    "Patent applications to the EPO by international patent classification and "
+                    "metropolitan region"
+                ),
+                "type": "dataset",
+                "data_end": "2012",
+            },
+        ]
+
+        results = rank_catalog(rows, "patent applications per capita", 5)
+
+        self.assertEqual(results[0]["code"], "pat_ep_tot")
+        self.assertTrue(all("patent" in row["title"].casefold() for row in results))
+
+    def test_search_prioritizes_an_exact_dataset_code(self) -> None:
+        rows = [
+            {
+                "code": "nama_10_gdp",
+                "title": "Gross domestic product and main components",
+                "type": "dataset",
+            },
+            {
+                "code": "nama_10_pc",
+                "title": "Gross domestic product per capita",
+                "type": "dataset",
+            },
+        ]
+
+        results = rank_catalog(rows, "nama_10_pc", 5)
+
+        self.assertEqual(results[0]["code"], "nama_10_pc")
 
 
 if __name__ == "__main__":

@@ -52,12 +52,16 @@ class ChartIntent(BaseModel):
     orientation: Literal["horizontal", "vertical"] | None = None
     x: str | None = None
     y: str | None = None
+    x_label: str | None = None
+    y_label: str | None = None
     series: str | None = None
+    label: str | None = None
     title: str | None = None
 
 
 class DataResult(BaseModel):
     dataset: DatasetInfo
+    sources: list[DatasetInfo] = Field(default_factory=list)
     filters: dict[str, list[str]]
     columns: list[ColumnInfo]
     rows: list[dict[str, Any]] = Field(max_length=500)

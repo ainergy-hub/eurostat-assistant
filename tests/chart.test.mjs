@@ -34,12 +34,22 @@ test("short, sparse comparisons can retain vertical bars", () => {
 
 test("scatter specifications pass through without a bar orientation", () => {
   const scatter = normalizeChartSpec(
-    { type: "scatter", x: "population", y: "gdp", series: "geo" },
+    {
+      type: "scatter",
+      x: "population",
+      y: "gdp",
+      x_label: "Population (millions)",
+      y_label: "GDP per capita (PPS)",
+      series: "geo",
+      label: "geo_label",
+    },
     [{ population: 10, gdp: 20, geo: "DE" }],
   );
   assert.equal(scatter.type, "scatter");
   assert.equal(scatter.x, "population");
   assert.equal(scatter.y, "gdp");
+  assert.equal(scatter.x_label, "Population (millions)");
+  assert.equal(scatter.label, "geo_label");
   assert.equal(scatter.orientation, undefined);
 });
 

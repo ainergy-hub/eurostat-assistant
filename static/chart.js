@@ -452,8 +452,8 @@ function renderScatterChart({ svg, wrap, tooltip, rows, spec, section }) {
     });
   }
 
-  const xLabel = fieldLabel(spec.x);
-  const yLabel = fieldLabel(spec.y);
+  const xLabel = spec.x_label || fieldLabel(spec.x);
+  const yLabel = spec.y_label || fieldLabel(spec.y);
   addText(svg, xLabel, margin.left + plotWidth / 2, height - 9, { "text-anchor": "middle" });
   addText(svg, yLabel, 16, margin.top + plotHeight / 2, {
     "text-anchor": "middle",
@@ -464,6 +464,7 @@ function renderScatterChart({ svg, wrap, tooltip, rows, spec, section }) {
   const seriesValues = seriesField ? uniqueValues(rows, seriesField) : ["Observations"];
   rows.forEach((row) => {
     const seriesName = seriesField ? String(row[seriesField] ?? "Series") : "Observation";
+    const pointLabel = spec.label ? String(row[spec.label] ?? seriesName) : seriesName;
     const seriesIndex = Math.max(0, seriesValues.indexOf(seriesName));
     const xValue = Number(row[spec.x]);
     const yValue = Number(row[spec.y]);
@@ -475,13 +476,13 @@ function renderScatterChart({ svg, wrap, tooltip, rows, spec, section }) {
       stroke: "#fbfbf6",
       "stroke-width": 1.5,
       tabindex: 0,
-      "aria-label": `${seriesName}, ${xLabel} ${NUMBER_FORMAT.format(xValue)}, ${yLabel} ${NUMBER_FORMAT.format(yValue)}`,
+      "aria-label": `${pointLabel}, ${xLabel} ${NUMBER_FORMAT.format(xValue)}, ${yLabel} ${NUMBER_FORMAT.format(yValue)}`,
     });
     bindMarkTooltip(
       point,
       tooltip,
       wrap,
-      seriesName,
+      pointLabel,
       `${xLabel}: ${NUMBER_FORMAT.format(xValue)} · ${yLabel}: ${NUMBER_FORMAT.format(yValue)}`,
     );
     svg.appendChild(point);
