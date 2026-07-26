@@ -1,10 +1,17 @@
-import { buildContextSummary, recentHistory, titleFromPrompt } from "./chat_state.js";
+import {
+  buildChatLog,
+  buildContextSummary,
+  latestDataResult,
+  recentHistory,
+  titleFromPrompt,
+} from "./chat_state.js";
 import { createChartSection } from "./chart.js";
 import { renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;
 const MAX_CHATS = 30;
 const STORAGE_KEY = "eurostat-lens-chats-v1";
+const APP_VERSION = "0.2.0";
 
 const chat = document.querySelector("#chat");
 const composer = document.querySelector("#composer");
@@ -30,6 +37,7 @@ const toolCallDialog = document.querySelector("#tool-call-dialog");
 const toolCallDialogClose = document.querySelector("#tool-call-dialog-close");
 const toolCallDialogSummary = document.querySelector("#tool-call-dialog-summary");
 const toolCallDetails = document.querySelector("#tool-call-details");
+const downloadChatLogButton = document.querySelector("#download-chat-log");
 
 let state = loadState();
 let inFlightChatId = null;
@@ -226,6 +234,7 @@ function newChatRecord() {
     createdAt: now,
     updatedAt: now,
     messages: [],
+    events: [],
   };
 }
 
@@ -235,6 +244,10 @@ function loadState() {
     if (stored?.chats?.length) {
       const chats = stored.chats
         .filter((item) => item && typeof item.id === "string" && Array.isArray(item.messages))
+        .map((item) => ({
+          ...item,
+          events: Array.isArray(item.events) ? item.events : [],
+        }))
         .slice(0, MAX_CHATS);
       const activeChatId = chats.some((item) => item.id === stored.activeChatId)
         ? stored.activeChatId
@@ -352,6 +365,36 @@ function deleteChat(id) {
   if (state.activeChatId === id) state.activeChatId = state.chats[0].id;
   saveState();
   renderWorkspace();
+}
+
+function filenamePart(value) {
+  const cleaned = String(value || "investigation")
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLocaleLowerCase();
+  return (cleaned || "investigation").slice(0, 60);
+}
+
+function downloadCurrentChatLog() {
+  const record = activeChat();
+  if (!record?.messages.length) return;
+
+  const exportedAt = new Date().toISOString();
+  const log = buildChatLog(record, { exportedAt, appVersion: APP_VERSION });
+  const blob = new Blob([`${JSON.stringify(log, null, 2)}\n`], {
+    type: "application/json;charset=utf-8",
+  });
+  const link = document.createElement("a");
+  const date = exportedAt.slice(0, 10);
+  link.href = URL.createObjectURL(blob);
+  link.download = `eurostat-lens-${filenamePart(record.title)}-${date}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
 }
 
 function addQuestion(content) {
@@ -633,6 +676,13 @@ function renderWorkspace() {
   chat.replaceChildren();
   hero.hidden = record.messages.length > 0;
   currentChatTitle.textContent = record.title;
+  downloadChatLogButton.disabled = record.messages.length === 0;
+  downloadChatLogButton.setAttribute(
+    "aria-label",
+    record.messages.length
+      ? `Download log for ${record.title}`
+      : "Download log (available after the first message)",
+  );
   const summary = buildContextSummary(record.messages);
   contextStatus.hidden = !summary;
   contextStatus.title = summary
@@ -682,14 +732,21 @@ composer.addEventListener("submit", async (event) => {
   const priorMessages = [...record.messages];
   const summary = buildContextSummary(priorMessages);
   const history = recentHistory(priorMessages);
+  const contextResult = latestDataResult(priorMessages);
   if (!record.messages.length) record.title = titleFromPrompt(message);
-  record.messages.push({ role: "user", content: message });
-  record.updatedAt = new Date().toISOString();
+  const requestStartedAt = new Date();
+  record.messages.push({
+    role: "user",
+    content: message,
+    createdAt: requestStartedAt.toISOString(),
+  });
+  record.updatedAt = requestStartedAt.toISOString();
   inFlightChatId = record.id;
   saveState();
   hero.hidden = true;
   addQuestion(message);
   currentChatTitle.textContent = record.title;
+  downloadChatLogButton.disabled = false;
   renderChatList();
   promptInput.value = "";
   sendButton.disabled = true;
@@ -697,17 +754,20 @@ composer.addEventListener("submit", async (event) => {
   startToolActivity();
 
   try {
-    const data = await streamChat({ message, history, summary }, (streamEvent) => {
-      if (streamEvent.type !== "tool_call" || !streamEvent.call) return;
-      updateToolActivity(streamEvent.call);
-      if (streamEvent.phase === "started") {
-        label.textContent = `Running ${readableToolName(streamEvent.call.name)}`;
-      } else if (streamEvent.call.status === "error") {
-        label.textContent = `${readableToolName(streamEvent.call.name)} reported an error`;
-      } else {
-        label.textContent = `${readableToolName(streamEvent.call.name)} completed`;
-      }
-    });
+    const data = await streamChat(
+      { message, history, summary, context_result: contextResult },
+      (streamEvent) => {
+        if (streamEvent.type !== "tool_call" || !streamEvent.call) return;
+        updateToolActivity(streamEvent.call);
+        if (streamEvent.phase === "started") {
+          label.textContent = `Running ${readableToolName(streamEvent.call.name)}`;
+        } else if (streamEvent.call.status === "error") {
+          label.textContent = `${readableToolName(streamEvent.call.name)} reported an error`;
+        } else {
+          label.textContent = `${readableToolName(streamEvent.call.name)} completed`;
+        }
+      },
+    );
     pending.remove();
     finishToolActivity(data.tool_call_details, data.tool_calls);
     const target = state.chats.find((item) => item.id === record.id);
@@ -715,6 +775,8 @@ composer.addEventListener("submit", async (event) => {
       target.messages.push({
         role: "assistant",
         content: data.answer,
+        createdAt: new Date().toISOString(),
+        durationMs: Date.now() - requestStartedAt.getTime(),
         result: data.result,
         toolCalls: data.tool_calls,
         toolCallDetails: data.tool_call_details,
@@ -742,6 +804,18 @@ composer.addEventListener("submit", async (event) => {
   } catch (error) {
     pending.remove();
     failToolActivity();
+    const target = state.chats.find((item) => item.id === record.id);
+    if (target) {
+      target.events ??= [];
+      target.events.push({
+        type: "request_error",
+        createdAt: new Date().toISOString(),
+        durationMs: Date.now() - requestStartedAt.getTime(),
+        message: error instanceof Error ? error.message : String(error),
+      });
+      target.updatedAt = new Date().toISOString();
+      saveState();
+    }
     if (state.activeChatId === record.id) addError(error.message);
   } finally {
     window.clearInterval(timer);
@@ -766,6 +840,7 @@ promptInput.addEventListener("keydown", (event) => {
 });
 
 newChatButton.addEventListener("click", createChat);
+downloadChatLogButton.addEventListener("click", downloadCurrentChatLog);
 menuButton.addEventListener("click", openSidebar);
 sidebarClose.addEventListener("click", closeSidebar);
 sidebarBackdrop.addEventListener("click", closeSidebar);

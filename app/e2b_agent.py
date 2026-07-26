@@ -54,6 +54,7 @@ def run_eurostat_agent(
     history: list[dict[str, str]],
     summary: str,
     config: AgentConfig,
+    context_result: dict[str, Any] | None = None,
     on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> AgentResult:
     _require_env("E2B_API_KEY")
@@ -67,6 +68,7 @@ def run_eurostat_agent(
         "query": query,
         "history": history,
         "summary": summary,
+        "context_result": context_result,
         "model": config.model,
     }
     def handle_stdout(data: Any) -> None:

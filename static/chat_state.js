@@ -1,5 +1,6 @@
 export const RECENT_MESSAGE_LIMIT = 6;
 export const SUMMARY_LIMIT = 2400;
+export const CHAT_LOG_SCHEMA_VERSION = 1;
 
 export function titleFromPrompt(prompt) {
   const cleaned = prompt.replace(/\s+/g, " ").trim();
@@ -48,4 +49,74 @@ export function recentHistory(messages) {
   return messages
     .slice(-RECENT_MESSAGE_LIMIT)
     .map(({ role, content }) => ({ role, content }));
+}
+
+export function latestDataResult(messages) {
+  return [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.result?.rows?.length)
+    ?.result ?? null;
+}
+
+function diagnosticToolCallDetails(details) {
+  if (!Array.isArray(details)) return details;
+  return details.map(({ result_preview: _resultPreview, ...detail }) => detail);
+}
+
+function diagnosticResult(result) {
+  if (!result || typeof result !== "object") return result;
+  const { rows, ...metadata } = result;
+  return {
+    ...metadata,
+    ...(Array.isArray(rows) ? { rowCount: rows.length } : {}),
+  };
+}
+
+export function buildChatLog(
+  record,
+  {
+    exportedAt = new Date().toISOString(),
+    appVersion = "unknown",
+  } = {},
+) {
+  const messages = Array.isArray(record?.messages) ? record.messages : [];
+  const events = Array.isArray(record?.events) ? record.events : [];
+  const summary = buildContextSummary(messages);
+
+  return {
+    schemaVersion: CHAT_LOG_SCHEMA_VERSION,
+    app: {
+      name: "Eurostat Lens",
+      version: appVersion,
+    },
+    exportedAt,
+    privacyNotice:
+      "Generated locally from this browser. Observation rows and tool result previews are excluded; review chat text before sharing.",
+    investigation: {
+      id: record?.id || null,
+      title: record?.title || "Untitled investigation",
+      createdAt: record?.createdAt || null,
+      updatedAt: record?.updatedAt || null,
+      messageCount: messages.length,
+      turnCount: messages.filter((message) => message.role === "user").length,
+      context: {
+        recentMessageLimit: RECENT_MESSAGE_LIMIT,
+        olderContextCompacted: Boolean(summary),
+        compactSummary: summary || null,
+      },
+      messages: messages.map((message, index) => ({
+        index: index + 1,
+        role: message.role,
+        createdAt: message.createdAt || null,
+        content: message.content,
+        ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),
+        ...(message.toolCalls === undefined ? {} : { toolCalls: message.toolCalls }),
+        ...(message.toolCallDetails === undefined
+          ? {}
+          : { toolCallDetails: diagnosticToolCallDetails(message.toolCallDetails) }),
+        ...(message.result === undefined ? {} : { result: diagnosticResult(message.result) }),
+      })),
+      events,
+    },
+  };
 }

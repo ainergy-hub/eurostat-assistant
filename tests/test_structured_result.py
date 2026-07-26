@@ -11,6 +11,7 @@ from app.sandbox_agent import (
     TOOLS,
     build_messages,
     build_structured_result,
+    response_result,
     run,
     text_content,
     tool_arguments,
@@ -222,6 +223,79 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(len(request.history), 6)
         self.assertEqual(request.summary, "Earlier investigation summary.")
 
+    def test_follow_up_request_accepts_previous_chart_data(self) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        request = ChatRequest(
+            message="Which country grew faster?",
+            context_result=context_result,
+        )
+
+        assert request.context_result is not None
+        self.assertEqual(request.context_result.dataset.code, "demo_pjan")
+        self.assertEqual(len(request.context_result.rows), 4)
+
+    def test_previous_chart_data_is_added_to_model_context(self) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        messages = build_messages(
+            {
+                "query": "Which country grew faster?",
+                "context_result": context_result,
+            }
+        )
+
+        self.assertIn("Reusable structured result", messages[-2]["content"])
+        self.assertIn('"geo":"DE"', messages[-2]["content"])
+        self.assertEqual(messages[-1]["content"], "Which country grew faster?")
+
+    def test_previous_result_is_returned_without_a_new_fetch(self) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        result = response_result(None, context_result)
+
+        self.assertEqual(result, context_result)
+
+    def test_follow_up_can_rechart_previous_rows_without_fetching(self) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        result = response_result(
+            None,
+            context_result,
+            {
+                "type": "bar",
+                "x": "time_label",
+                "y": "value",
+                "series": "geo_label",
+                "orientation": "vertical",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "bar")
+        self.assertEqual(result["chart"]["orientation"], "vertical")
+        self.assertEqual(result["rows"], context_result["rows"])
+
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_follow_up_can_answer_without_any_tool_calls(self, chat_mock) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        chat_mock.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Germany grew faster in the loaded period.",
+                    }
+                }
+            ]
+        }
+
+        response = run(
+            {
+                "query": "Which country grew faster?",
+                "context_result": context_result,
+            }
+        )
+
+        self.assertEqual(response["tool_calls"], 0)
+        self.assertEqual(response["result"], context_result)
+
     @patch("app.sandbox_agent.call_tool", return_value="[]")
     @patch("app.sandbox_agent.openrouter_chat")
     def test_agent_reports_each_individual_tool_call(self, chat_mock, tool_mock) -> None:
@@ -293,8 +367,8 @@ class StructuredResultTests(unittest.TestCase):
         )
         self.assertEqual(tool_mock.call_count, 3)
 
-    def test_agent_round_limit_is_twenty(self) -> None:
-        self.assertEqual(MAX_TOOL_ROUNDS, 20)
+    def test_agent_round_limit_is_thirty(self) -> None:
+        self.assertEqual(MAX_TOOL_ROUNDS, 30)
 
     def test_tool_result_preview_respects_public_contract(self) -> None:
         preview = tool_output_preview("x" * (MAX_EVENT_PREVIEW_CHARS + 20))

@@ -24,7 +24,8 @@ Eurostat Lens can:
 - render line charts, horizontal or vertical bar charts, and scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
 - keep up to 30 separate investigations in local browser storage;
-- carry recent conversational context and a compact summary into follow-up questions.
+- carry recent conversational context and a compact summary into follow-up questions;
+- reuse the most recent chart's validated rows for follow-ups without fetching the same API data again.
 
 The current scope does not include:
 
@@ -113,8 +114,8 @@ Open `http://127.0.0.1:8000`. Set `HOST` or `PORT` in the environment to overrid
 
 ## How the app works
 
-1. The browser sends a question, up to six recent messages, and an extractive summary of older
-   messages to `POST /api/chat/stream`.
+1. The browser sends a question, up to six recent messages, an extractive summary of older
+   messages, and the most recent structured chart result to `POST /api/chat/stream`.
 2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
 3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
    and chart selection.
@@ -124,10 +125,17 @@ Open `http://127.0.0.1:8000`. Set `HOST` or `PORT` in the environment to overrid
 6. FastAPI validates the public result before the browser renders it. The browser does not execute
    model-authored HTML or JavaScript.
 
-Complete display history stays in browser storage. Only the six most recent messages and a summary
-of at most 2,400 characters are sent to the agent. The summary is generated locally without another
-model call and is treated as context rather than statistical evidence; the agent is instructed to
-verify facts through the Eurostat tools.
+Complete display history stays in browser storage. The agent receives the six most recent messages,
+a summary of at most 2,400 characters, and (when available) the latest chart's validated result.
+The structured result is treated as reusable Eurostat tool output, so follow-ups that are answerable
+from those rows do not repeat dataset search, dimension inspection, or the data fetch. A different
+dataset, filter, geography, time range, or unavailable fact still triggers a new lookup.
+
+Use **Download log** in the current investigation header to export a local JSON diagnostic log.
+The export contains the chat, dataset and filter metadata, tool-call status, timing for new
+responses, compacted context, and recorded request errors. Observation rows and tool result
+previews are excluded. Review the file before sharing because the chat text may still contain
+reported values.
 
 ### HTTP endpoints
 

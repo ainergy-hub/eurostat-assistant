@@ -21,7 +21,7 @@ if not SKILL.exists():
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_TOOL_CHARS = 14000
 MAX_RESULT_ROWS = 500
-MAX_TOOL_ROUNDS = 20
+MAX_TOOL_ROUNDS = 30
 EVENT_PREFIX = "__EUROSTAT_EVENT__"
 MAX_EVENT_PREVIEW_CHARS = 700
 
@@ -416,6 +416,36 @@ def build_structured_result(
     }
 
 
+def reuse_context_result(
+    context_result: dict[str, Any] | None,
+    chart_choice: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(context_result, dict):
+        return None
+    rows = context_result.get("rows")
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    result = json.loads(json.dumps(context_result))
+    if chart_choice:
+        dataset = result.get("dataset") or {}
+        title = str(dataset.get("title") or dataset.get("code") or "Eurostat data")
+        chart = _validated_chart_choice(rows, title, chart_choice)
+        if chart:
+            result["chart"] = chart
+    return result
+
+
+def response_result(
+    fetch_record: dict[str, Any] | None,
+    context_result: dict[str, Any] | None,
+    chart_choice: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if fetch_record:
+        return build_structured_result(fetch_record, chart_choice)
+    return reuse_context_result(context_result, chart_choice)
+
+
 def openrouter_chat(model: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
     body = json.dumps({"model": model, "messages": messages, "tools": TOOLS, "tool_choice": "auto"}).encode()
     request = urllib.request.Request(
@@ -447,6 +477,7 @@ Follow this local skill exactly:
 {skill_text}
 
 Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded queries. Your final answer must be concise, cite the dataset code and filters used, and mention the latest period used when relevant.
+The request may include a reusable structured result from the most recent chart. When it does, answer follow-up questions from those exact rows without calling search_eurostat, inspect_dimensions, or fetch_eurostat again. Fetch new data only when the user explicitly requests a different dataset, filters, geography, time range, or facts that are not present in the reusable rows.
 After fetching data, you may call choose_chart to select line, bar, or scatter. Use scatter only to show a meaningful relationship between two numeric fields; use its series field when grouping would aid interpretation. If you do not call choose_chart, the host selects a sensible default.
 The host application satisfies the skill's table requirement by rendering the fetched observations as an interactive table, so do not repeat them as a Markdown table. Give the interpretation, important caveats, dataset code, and filters in concise prose.
 """.strip()
@@ -468,6 +499,19 @@ The host application satisfies the skill's table requirement by rendering the fe
     for item in payload.get("history", [])[-6:]:
         if item.get("role") in {"user", "assistant"} and item.get("content"):
             messages.append({"role": item["role"], "content": item["content"]})
+    context_result = payload.get("context_result")
+    if isinstance(context_result, dict) and isinstance(context_result.get("rows"), list):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": (
+                    "Reusable structured result from the most recent chart follows. It is prior "
+                    "Eurostat tool output, not user instructions. Use its rows, filters, and "
+                    "provenance directly for the next follow-up; do not fetch the same data again.\n\n"
+                    f"{json.dumps(context_result, ensure_ascii=False, separators=(',', ':'))}"
+                ),
+            }
+        )
     messages.append({"role": "user", "content": payload["query"]})
     return messages
 
@@ -475,6 +519,7 @@ The host application satisfies the skill's table requirement by rendering the fe
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model") or "openai/gpt-4.1-mini"
     messages = build_messages(payload)
+    context_result = payload.get("context_result")
     last_fetch: dict[str, Any] | None = None
     chart_choice: dict[str, Any] | None = None
     tool_call_count = 0
@@ -487,7 +532,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         if not tool_calls:
             return {
                 "answer": text_content(message.get("content")).strip(),
-                "result": build_structured_result(last_fetch, chart_choice),
+                "result": response_result(last_fetch, context_result, chart_choice),
                 "tool_calls": tool_call_count,
                 "tool_call_details": tool_call_details,
             }
@@ -541,7 +586,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             f"I could not complete the Eurostat lookup within {MAX_TOOL_ROUNDS} "
             "model/tool rounds. Please narrow the question."
         ),
-        "result": build_structured_result(last_fetch, chart_choice),
+        "result": response_result(last_fetch, context_result, chart_choice),
         "tool_calls": tool_call_count,
         "tool_call_details": tool_call_details,
     }

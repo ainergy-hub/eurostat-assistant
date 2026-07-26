@@ -35,12 +35,6 @@ class ChatMessage(BaseModel):
     content: str = Field(min_length=1)
 
 
-class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
-    history: list[ChatMessage] = Field(default_factory=list, max_length=6)
-    summary: str = Field(default="", max_length=2400)
-
-
 class DatasetInfo(BaseModel):
     code: str
     title: str
@@ -69,6 +63,13 @@ class DataResult(BaseModel):
     rows: list[dict[str, Any]] = Field(max_length=500)
     chart: ChartIntent
     warnings: list[str] = Field(default_factory=list)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=6)
+    summary: str = Field(default="", max_length=2400)
+    context_result: DataResult | None = None
 
 
 class ToolCallDetail(BaseModel):
@@ -128,6 +129,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             [message.model_dump() for message in request.history],
             request.summary,
             _agent_config(),
+            request.context_result.model_dump(mode="json") if request.context_result else None,
         )
     except AgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -149,6 +151,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 [message.model_dump() for message in request.history],
                 request.summary,
                 _agent_config(),
+                request.context_result.model_dump(mode="json") if request.context_result else None,
                 on_event=publish,
             )
             publish({"type": "result", "data": _public_response(result).model_dump(mode="json")})
