@@ -1,8 +1,7 @@
 import { buildContextSummary, recentHistory, titleFromPrompt } from "./chat_state.js";
+import { createChartSection } from "./chart.js";
 import { renderMarkdown } from "./markdown.js";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-const COLORS = ["#ff4f00", "#25764c", "#545c78", "#a66b1f", "#7b557c", "#357a78"];
 const PAGE_SIZE = 12;
 const MAX_CHATS = 30;
 const STORAGE_KEY = "eurostat-lens-chats-v1";
@@ -40,12 +39,6 @@ function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function svgElement(tag, attributes = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
   return node;
 }
 
@@ -559,193 +552,6 @@ function downloadCsv(result, columns) {
   link.download = `${code}-observations.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
-}
-
-function addText(svg, text, x, y, attributes = {}) {
-  const node = svgElement("text", {
-    x,
-    y,
-    fill: "#6b6b65",
-    "font-size": 11,
-    "font-family": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-    ...attributes,
-  });
-  node.textContent = text;
-  svg.appendChild(node);
-  return node;
-}
-
-function createChartSection(result) {
-  if (!result.chart || result.chart.type === "none" || !result.rows.length) return null;
-  const spec = result.chart;
-  const numericRows = result.rows.filter((row) => Number.isFinite(Number(row[spec.y])));
-  if (!numericRows.length) return null;
-
-  const section = element("section", "result-section");
-  const heading = element("div", "section-heading");
-  const copy = element("div");
-  copy.appendChild(element("h2", "", spec.type === "line" ? "Trend" : "Comparison"));
-  copy.appendChild(element("p", "", "Hover over a mark to inspect an observation"));
-  heading.appendChild(copy);
-  section.appendChild(heading);
-  const wrap = element("div", "chart-wrap");
-  section.appendChild(wrap);
-
-  const width = 920;
-  const height = 350;
-  const margin = { top: 18, right: 24, bottom: 58, left: 68 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const svg = svgElement("svg", {
-    viewBox: `0 0 ${width} ${height}`,
-    role: "img",
-    "aria-label": spec.title || "Eurostat data chart",
-  });
-  wrap.appendChild(svg);
-  const tooltip = element("div", "chart-tooltip");
-  tooltip.hidden = true;
-  wrap.appendChild(tooltip);
-
-  const xValues = [...new Set(numericRows.map((row) => String(row[spec.x] ?? "")))].sort((a, b) => {
-    const numeric = Number(a) - Number(b);
-    return Number.isNaN(numeric) ? a.localeCompare(b) : numeric;
-  });
-  const yValues = numericRows.map((row) => Number(row[spec.y]));
-  const maxY = Math.max(...yValues);
-  const minObserved = Math.min(...yValues);
-  const minY = spec.type === "bar" ? Math.min(0, minObserved) : minObserved > 0 ? minObserved * 0.96 : minObserved;
-  const yRange = maxY - minY || Math.max(Math.abs(maxY), 1);
-  const xPoint = (value) =>
-    margin.left + (xValues.length === 1 ? plotWidth / 2 : (xValues.indexOf(String(value)) / (xValues.length - 1)) * plotWidth);
-  const yPoint = (value) => margin.top + plotHeight - ((Number(value) - minY) / yRange) * plotHeight;
-
-  for (let index = 0; index <= 4; index += 1) {
-    const value = minY + (yRange * index) / 4;
-    const y = yPoint(value);
-    svg.appendChild(
-      svgElement("line", {
-        x1: margin.left,
-        x2: width - margin.right,
-        y1: y,
-        y2: y,
-        stroke: "#e5e5e0",
-        "stroke-width": 1,
-      }),
-    );
-    addText(svg, new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value), margin.left - 10, y + 4, {
-      "text-anchor": "end",
-    });
-  }
-
-  const tickStep = Math.max(1, Math.ceil(xValues.length / 8));
-  xValues.forEach((value, index) => {
-    if (index % tickStep !== 0 && index !== xValues.length - 1) return;
-    addText(svg, value, xPoint(value), height - margin.bottom + 24, { "text-anchor": "middle" });
-  });
-  svg.appendChild(
-    svgElement("line", {
-      x1: margin.left,
-      x2: width - margin.right,
-      y1: margin.top + plotHeight,
-      y2: margin.top + plotHeight,
-      stroke: "#a8a8a0",
-    }),
-  );
-
-  const seriesField = spec.series;
-  const seriesValues = seriesField
-    ? [...new Set(numericRows.map((row) => String(row[seriesField] ?? "Series")))]
-    : ["Value"];
-
-  function showTooltip(event, row, seriesName) {
-    tooltip.replaceChildren(
-      element("strong", "", seriesName),
-      document.createElement("br"),
-      document.createTextNode(`${row[spec.x]} · ${displayValue(Number(row[spec.y]))}`),
-    );
-    tooltip.hidden = false;
-    const bounds = wrap.getBoundingClientRect();
-    tooltip.style.left = `${event.clientX - bounds.left}px`;
-    tooltip.style.top = `${event.clientY - bounds.top}px`;
-  }
-
-  function hideTooltip() {
-    tooltip.hidden = true;
-  }
-
-  if (spec.type === "line") {
-    seriesValues.forEach((seriesName, seriesIndex) => {
-      const rows = numericRows
-        .filter((row) => !seriesField || String(row[seriesField] ?? "Series") === seriesName)
-        .sort((a, b) => xValues.indexOf(String(a[spec.x])) - xValues.indexOf(String(b[spec.x])));
-      const color = COLORS[seriesIndex % COLORS.length];
-      const path = rows
-        .map((row, index) => `${index ? "L" : "M"} ${xPoint(row[spec.x])} ${yPoint(row[spec.y])}`)
-        .join(" ");
-      svg.appendChild(
-        svgElement("path", {
-          d: path,
-          fill: "none",
-          stroke: color,
-          "stroke-width": 2.5,
-          "stroke-linecap": "square",
-          "stroke-linejoin": "miter",
-        }),
-      );
-      rows.forEach((row) => {
-        const point = svgElement("circle", {
-          cx: xPoint(row[spec.x]),
-          cy: yPoint(row[spec.y]),
-          r: 4,
-          fill: color,
-          stroke: "#fbfbf6",
-          "stroke-width": 2,
-          tabindex: 0,
-        });
-        point.addEventListener("pointerenter", (event) => showTooltip(event, row, seriesName));
-        point.addEventListener("pointerleave", hideTooltip);
-        point.addEventListener("focus", (event) => {
-          const bounds = event.target.getBoundingClientRect();
-          showTooltip({ clientX: bounds.left, clientY: bounds.top }, row, seriesName);
-        });
-        point.addEventListener("blur", hideTooltip);
-        svg.appendChild(point);
-      });
-    });
-  } else {
-    const band = plotWidth / Math.max(xValues.length, 1);
-    const barWidth = Math.max(8, Math.min(62, band * 0.62));
-    numericRows.forEach((row, index) => {
-      const value = Number(row[spec.y]);
-      const y = yPoint(Math.max(value, 0));
-      const zero = yPoint(0);
-      const bar = svgElement("rect", {
-        x: xPoint(row[spec.x]) - barWidth / 2,
-        y: Math.min(y, zero),
-        width: barWidth,
-        height: Math.max(1, Math.abs(zero - y)),
-        rx: 0,
-        fill: COLORS[index % COLORS.length],
-        tabindex: 0,
-      });
-      bar.addEventListener("pointerenter", (event) => showTooltip(event, row, String(row[spec.x])));
-      bar.addEventListener("pointerleave", hideTooltip);
-      svg.appendChild(bar);
-    });
-  }
-
-  if (seriesValues.length > 1) {
-    const legend = element("div", "chart-legend");
-    seriesValues.forEach((seriesName, index) => {
-      const item = element("span", "legend-item");
-      const swatch = element("span", "legend-swatch");
-      swatch.style.background = COLORS[index % COLORS.length];
-      item.append(swatch, document.createTextNode(seriesName));
-      legend.appendChild(item);
-    });
-    section.appendChild(legend);
-  }
-  return section;
 }
 
 function createProvenance(result) {

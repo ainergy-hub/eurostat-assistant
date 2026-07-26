@@ -6,7 +6,7 @@ The project combines a reusable Codex skill with a small FastAPI reference app. 
 Eurostat metadata, inspects dataset dimensions, fetches a bounded slice, and returns:
 
 - a concise interpretation;
-- an interactive line or bar chart;
+- an interactive line, bar, or scatter plot;
 - a sortable, filterable table;
 - CSV export;
 - the dataset code, title, filters, update date, and reproducible API URL;
@@ -61,11 +61,12 @@ Open `http://127.0.0.1:8000`.
 
 1. The browser sends the question and recent conversation history to `POST /api/chat/stream`.
 2. The backend creates a short-lived E2B sandbox and copies in the skill, helper, and agent.
-3. The model may call only three tools: search, inspect dimensions, and bounded fetch.
+3. The model may call search, inspect dimensions, bounded fetch, and a validated chart-choice tool.
 4. Each actual tool invocation is streamed to the sidebar as newline-delimited JSON.
 5. The final fetch is preserved as structured rows and provenance.
-6. FastAPI validates the result before returning it to the browser.
-7. The browser generates the chart and table without executing model-authored HTML or JavaScript.
+6. The model may select a line, bar, or scatter plot; otherwise the host derives a sensible default.
+7. FastAPI validates the result before returning it to the browser.
+8. The browser generates the chart and table without executing model-authored HTML or JavaScript.
 
 Each investigation keeps its complete display history in browser storage. To keep model input costs
 bounded, the API receives only the six most recent messages plus an extractive summary of older
@@ -95,6 +96,7 @@ Successful responses follow this shape:
     "rows": [],
     "chart": {
       "type": "line",
+      "orientation": null,
       "x": "time_label",
       "y": "value",
       "series": "geo_label"
@@ -135,6 +137,7 @@ python3 scripts/eurostat_api.py fetch demo_pjan \
 ```bash
 uv run python -m unittest discover -v
 node --check static/app.js
+node tests/chart.test.mjs
 node tests/chat_state.test.mjs
 ```
 
@@ -147,7 +150,10 @@ version.
 - Each question currently creates a new E2B sandbox.
 - Investigation history is device-local and is not synchronized between browsers.
 - There are no accounts, saved analyses, or shareable result URLs.
-- The app supports line and bar charts; maps and more advanced chart controls are future work.
+- The app supports line charts, horizontal and vertical bar charts, and scatter plots. The AI can
+  choose among them after fetching data; scatter choices are accepted only when both selected axes
+  are numeric. Category comparisons use horizontal bars by default so long labels remain readable,
+  and the renderer is isolated in `static/chart.js` for future chart types and presentation controls.
 - A production public deployment still needs rate limiting, caching, monitoring, and model-cost
   controls.
 

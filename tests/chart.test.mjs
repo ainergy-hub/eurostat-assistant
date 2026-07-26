@@ -1,0 +1,57 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  horizontalBarLayout,
+  normalizeChartSpec,
+  resolveBarOrientation,
+  sortComparisonRows,
+} from "../static/chart.js";
+
+const rows = [
+  { product: "Food and live animals", value: 15 },
+  { product: "Machinery and transport equipment", value: 80 },
+  { product: "Mineral fuels, lubricants and related materials", value: 45 },
+];
+const barSpec = { type: "bar", x: "product", y: "value" };
+
+test("explicit chart orientation wins over the readability heuristic", () => {
+  assert.equal(resolveBarOrientation({ ...barSpec, orientation: "vertical" }, rows), "vertical");
+});
+
+test("long category labels default to horizontal bars for legacy results", () => {
+  assert.equal(resolveBarOrientation(barSpec, rows), "horizontal");
+  assert.equal(normalizeChartSpec(barSpec, rows).orientation, "horizontal");
+});
+
+test("short, sparse comparisons can retain vertical bars", () => {
+  const shortRows = [
+    { product: "France", value: 68 },
+    { product: "Germany", value: 84 },
+  ];
+  assert.equal(resolveBarOrientation(barSpec, shortRows), "vertical");
+});
+
+test("scatter specifications pass through without a bar orientation", () => {
+  const scatter = normalizeChartSpec(
+    { type: "scatter", x: "population", y: "gdp", series: "geo" },
+    [{ population: 10, gdp: 20, geo: "DE" }],
+  );
+  assert.equal(scatter.type, "scatter");
+  assert.equal(scatter.x, "population");
+  assert.equal(scatter.y, "gdp");
+  assert.equal(scatter.orientation, undefined);
+});
+
+test("horizontal comparisons are ordered by value and sized by row count", () => {
+  const manyRows = Array.from({ length: 20 }, (_, index) => ({
+    product: `Category ${index}`,
+    value: index,
+  }));
+  assert.deepEqual(
+    sortComparisonRows(rows, barSpec).map((row) => row.value),
+    [80, 45, 15],
+  );
+  assert.ok(horizontalBarLayout(rows, barSpec).margin.left >= 150);
+  assert.ok(horizontalBarLayout(manyRows, barSpec).height > 350);
+});

@@ -54,7 +54,8 @@ class ColumnInfo(BaseModel):
 
 
 class ChartIntent(BaseModel):
-    type: Literal["none", "line", "bar"]
+    type: Literal["none", "line", "bar", "scatter"]
+    orientation: Literal["horizontal", "vertical"] | None = None
     x: str | None = None
     y: str | None = None
     series: str | None = None

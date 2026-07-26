@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -79,6 +80,36 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "choose_chart",
+            "description": (
+                "Choose the visualization for the latest fetched rows. Use line for ordered trends, "
+                "bar for category comparisons, and scatter for relationships between two numeric "
+                "fields. The host validates the selected fields before rendering."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["line", "bar", "scatter"]},
+                    "x": {"type": "string", "description": "Row field for the horizontal encoding."},
+                    "y": {"type": "string", "description": "Numeric row field for the vertical encoding."},
+                    "series": {
+                        "type": "string",
+                        "description": "Optional row field used to group or color observations.",
+                    },
+                    "orientation": {
+                        "type": "string",
+                        "enum": ["horizontal", "vertical"],
+                        "description": "Optional orientation for bar charts only.",
+                    },
+                },
+                "required": ["type", "x", "y"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 
@@ -124,6 +155,14 @@ def call_tool(name: str, raw_arguments: str) -> str:
         for time_value in args.get("time", []) or []:
             command.extend(["--time", str(time_value)])
         return run_helper(command)
+
+    if name == "choose_chart":
+        return json.dumps(
+            {
+                "accepted": True,
+                "message": "Chart choice recorded. Field compatibility will be validated by the host.",
+            }
+        )
 
     return f"Unknown tool: {name}"
 
@@ -273,6 +312,7 @@ def _chart_intent(rows: list[dict[str, Any]], title: str) -> dict[str, Any]:
     if category:
         return {
             "type": "bar",
+            "orientation": "horizontal",
             "x": category,
             "y": "value",
             "series": None,
@@ -281,7 +321,64 @@ def _chart_intent(rows: list[dict[str, Any]], title: str) -> dict[str, Any]:
     return {"type": "none"}
 
 
-def build_structured_result(fetch_record: dict[str, Any] | None) -> dict[str, Any] | None:
+def _numeric_field(rows: list[dict[str, Any]], field: str) -> bool:
+    values = [row.get(field) for row in rows if row.get(field) is not None]
+    if not values:
+        return False
+    try:
+        return all(not isinstance(value, bool) and math.isfinite(float(value)) for value in values)
+    except (TypeError, ValueError):
+        return False
+
+
+def _validated_chart_choice(
+    rows: list[dict[str, Any]],
+    title: str,
+    choice: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not choice or not rows:
+        return None
+    chart_type = choice.get("type")
+    x_field = choice.get("x")
+    y_field = choice.get("y")
+    if chart_type not in {"line", "bar", "scatter"}:
+        return None
+    if not isinstance(x_field, str) or not isinstance(y_field, str):
+        return None
+    if x_field not in rows[0] or y_field not in rows[0] or not _numeric_field(rows, y_field):
+        return None
+    if chart_type == "scatter" and (
+        x_field == y_field or not _numeric_field(rows, x_field)
+    ):
+        return None
+
+    series = choice.get("series")
+    if (
+        not isinstance(series, str)
+        or series not in rows[0]
+        or len(_unique_values(rows, series)) > 12
+    ):
+        series = None
+    orientation = choice.get("orientation")
+    if chart_type != "bar" or orientation not in {"horizontal", "vertical"}:
+        orientation = None
+
+    intent: dict[str, Any] = {
+        "type": chart_type,
+        "x": x_field,
+        "y": y_field,
+        "series": series,
+        "title": title,
+    }
+    if orientation:
+        intent["orientation"] = orientation
+    return intent
+
+
+def build_structured_result(
+    fetch_record: dict[str, Any] | None,
+    chart_choice: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if not fetch_record:
         return None
     output = fetch_record.get("output")
@@ -303,6 +400,7 @@ def build_structured_result(fetch_record: dict[str, Any] | None) -> dict[str, An
             f"{metadata.get('total_rows', len(rows))} returned observations."
         )
 
+    chart = _validated_chart_choice(rows, title, chart_choice) or _chart_intent(rows, title)
     return {
         "dataset": {
             "code": dataset_code,
@@ -313,7 +411,7 @@ def build_structured_result(fetch_record: dict[str, Any] | None) -> dict[str, An
         "filters": filters,
         "columns": _visible_columns(rows),
         "rows": rows,
-        "chart": _chart_intent(rows, title),
+        "chart": chart,
         "warnings": warnings,
     }
 
@@ -349,6 +447,7 @@ Follow this local skill exactly:
 {skill_text}
 
 Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded queries. Your final answer must be concise, cite the dataset code and filters used, and mention the latest period used when relevant.
+After fetching data, you may call choose_chart to select line, bar, or scatter. Use scatter only to show a meaningful relationship between two numeric fields; use its series field when grouping would aid interpretation. If you do not call choose_chart, the host selects a sensible default.
 The host application satisfies the skill's table requirement by rendering the fetched observations as an interactive table, so do not repeat them as a Markdown table. Give the interpretation, important caveats, dataset code, and filters in concise prose.
 """.strip()
 
@@ -377,6 +476,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model") or "openai/gpt-4.1-mini"
     messages = build_messages(payload)
     last_fetch: dict[str, Any] | None = None
+    chart_choice: dict[str, Any] | None = None
     tool_call_count = 0
     tool_call_details: list[dict[str, Any]] = []
 
@@ -387,7 +487,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         if not tool_calls:
             return {
                 "answer": text_content(message.get("content")).strip(),
-                "result": build_structured_result(last_fetch),
+                "result": build_structured_result(last_fetch, chart_choice),
                 "tool_calls": tool_call_count,
                 "tool_call_details": tool_call_details,
             }
@@ -426,6 +526,8 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     last_fetch = {"arguments": parsed_arguments, "output": parsed_output}
                 except json.JSONDecodeError:
                     pass
+            if function["name"] == "choose_chart" and not tool_output.startswith("ERROR:"):
+                chart_choice = parsed_arguments
             messages.append(
                 {
                     "role": "tool",
@@ -439,7 +541,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             f"I could not complete the Eurostat lookup within {MAX_TOOL_ROUNDS} "
             "model/tool rounds. Please narrow the question."
         ),
-        "result": build_structured_result(last_fetch),
+        "result": build_structured_result(last_fetch, chart_choice),
         "tool_calls": tool_call_count,
         "tool_call_details": tool_call_details,
     }

@@ -858,6 +858,15 @@ button.tool-call-count:hover {
   overflow: visible;
 }
 
+.chart-horizontal {
+  max-height: min(72vh, 760px);
+  overflow: auto;
+}
+
+.chart-horizontal svg {
+  min-height: 0;
+}
+
 .chart-tooltip {
   position: absolute;
   z-index: 3;
@@ -1540,6 +1549,10 @@ footer a:hover {
   .chart-wrap svg {
     min-width: 680px;
     min-height: 280px;
+  }
+
+  .chart-horizontal svg {
+    min-height: 0;
   }
 
   .table-tools {

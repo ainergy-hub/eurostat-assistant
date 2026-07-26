@@ -8,6 +8,7 @@ from app.main import ChatRequest, ChatResponse
 from app.sandbox_agent import (
     MAX_EVENT_PREVIEW_CHARS,
     MAX_TOOL_ROUNDS,
+    TOOLS,
     build_messages,
     build_structured_result,
     run,
@@ -108,6 +109,73 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response.result.dataset.code, "demo_pjan")
         self.assertEqual(response.result.chart.type, "line")
         self.assertEqual(response.tool_calls, 3)
+
+    def test_category_comparison_uses_horizontal_bars(self) -> None:
+        self.fetch_record["output"]["rows"] = [
+            {
+                "value": 125,
+                "product_label": "Food and live animals",
+                "time": "2025",
+                "time_label": "2025",
+            },
+            {
+                "value": 80,
+                "product_label": "Machinery and transport equipment",
+                "time": "2025",
+                "time_label": "2025",
+            },
+        ]
+
+        result = build_structured_result(self.fetch_record)
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "bar")
+        self.assertEqual(result["chart"]["orientation"], "horizontal")
+        self.assertEqual(result["chart"]["x"], "product_label")
+        response = ChatResponse(answer="Comparison.", result=result)
+        self.assertEqual(response.result.chart.orientation, "horizontal")
+
+    def test_ai_can_choose_scatter_for_two_numeric_fields(self) -> None:
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "type": "scatter",
+                "x": "time",
+                "y": "value",
+                "series": "geo_label",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "scatter")
+        self.assertEqual(result["chart"]["x"], "time")
+        self.assertEqual(result["chart"]["y"], "value")
+        self.assertEqual(result["chart"]["series"], "geo_label")
+        response = ChatResponse(answer="Relationship.", result=result)
+        self.assertEqual(response.result.chart.type, "scatter")
+
+    def test_invalid_scatter_choice_falls_back_to_default(self) -> None:
+        result = build_structured_result(
+            self.fetch_record,
+            {
+                "type": "scatter",
+                "x": "geo_label",
+                "y": "value",
+            },
+        )
+
+        assert result is not None
+        self.assertEqual(result["chart"]["type"], "line")
+
+    def test_choose_chart_tool_lists_scatter(self) -> None:
+        choose_chart = next(
+            tool["function"] for tool in TOOLS if tool["function"]["name"] == "choose_chart"
+        )
+
+        self.assertIn(
+            "scatter",
+            choose_chart["parameters"]["properties"]["type"]["enum"],
+        )
 
     def test_missing_fetch_has_no_result(self) -> None:
         self.assertIsNone(build_structured_result(None))
