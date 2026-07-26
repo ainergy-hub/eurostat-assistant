@@ -67,6 +67,15 @@ Include enough provenance for the user to reproduce the result:
 - latest extraction date if present in API metadata;
 - any data gaps or flags returned by Eurostat.
 
+Render every dataset code in user-facing prose as a Markdown link to its Eurostat Data Browser
+page. Use this exact pattern:
+
+`[demo_pjan](https://ec.europa.eu/eurostat/databrowser/view/demo_pjan/default/table?lang=en)`
+
+Replace `demo_pjan` in both the label and URL with the actual dataset code. Apply this to selected
+datasets, candidate datasets in clarification questions, and source notes. Do not link dimension or
+category codes as though they were datasets.
+
 Also include a compact Markdown table of the relevant returned observations. Prefer user-friendly columns such as geography, period, unit, indicator, category, value, and status/flag when present. Keep the table bounded to the rows needed to answer the question; if the result is too large, show the most relevant rows and explain how it was limited.
 
 Do not treat Eurostat values as versioned historical database snapshots. Eurostat states that the database contains the latest dataset versions.

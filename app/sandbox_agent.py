@@ -827,7 +827,7 @@ Follow this local skill exactly:
 
 {skill_text}
 
-Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded queries. Your final answer must be concise, cite the dataset code and filters used, and mention the latest period used when relevant.
+Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded queries. Your final answer must be concise, cite the dataset code and filters used, and mention the latest period used when relevant. Render each dataset code as a Markdown link to https://ec.europa.eu/eurostat/databrowser/view/{{dataset_code}}/default/table?lang=en, replacing {{dataset_code}} in both the label and URL with the actual code.
 When a concept could map to materially different Eurostat measures, perform bounded discovery before asking: run at most one catalogue search and inspect up to two credible candidates. Do not fetch observations for competing interpretations. If ambiguity remains, ask one concise question grounded in the discovered dataset titles, codes, units, dimensions, and coverage, and recommend the candidate that best matches the user's wording. If one candidate clearly matches, continue without asking and state any minor assumption.
 If the user provides an exact dataset code, inspect it directly without searching. Use at most two catalogue searches per requested measure. If two searches do not produce a credible candidate, stop searching and ask the user to choose from the closest candidates.
 Do not repeat a tool call with the same arguments. After a fetch returns zero rows or invalid filters, correct the filters from the inspected dimension codes; do not restart dataset search.

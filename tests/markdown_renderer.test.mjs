@@ -4,7 +4,7 @@ import test from "node:test";
 
 const source = await readFile(new URL("../static/markdown.js", import.meta.url), "utf8");
 const moduleUrl = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-const { markdownTestUtils, normalizeMarkdown } = await import(moduleUrl);
+const { eurostatDatasetUrl, markdownTestUtils, normalizeMarkdown } = await import(moduleUrl);
 
 test("unwraps a model response fenced as Markdown", () => {
   const source = "```markdown\n## Finding\n\nPopulation **increased**.\n```";
@@ -34,4 +34,23 @@ test("parses escaped pipes and code spans in GFM tables", () => {
 test("recognizes valid table dividers only", () => {
   assert.equal(markdownTestUtils.isTableDivider("| :--- | ---: |"), true);
   assert.equal(markdownTestUtils.isTableDivider("| --- | no |"), false);
+});
+
+test("builds the official Eurostat Data Browser URL for a dataset code", () => {
+  assert.equal(
+    eurostatDatasetUrl("demo_pjan"),
+    "https://ec.europa.eu/eurostat/databrowser/view/demo_pjan/default/table?lang=en",
+  );
+});
+
+test("matches only complete known dataset codes", () => {
+  const links = [
+    {
+      code: "demo_pjan",
+      url: eurostatDatasetUrl("demo_pjan"),
+    },
+  ];
+  assert.equal(markdownTestUtils.datasetCodeAt("Use demo_pjan.", 4, links)?.code, "demo_pjan");
+  assert.equal(markdownTestUtils.datasetCodeAt("Use demo_pjan_extra.", 4, links), null);
+  assert.equal(markdownTestUtils.datasetCodeAt("my_demo_pjan", 3, links), null);
 });

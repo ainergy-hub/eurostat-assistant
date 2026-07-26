@@ -1,5 +1,12 @@
 const SAFE_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const INLINE_MARKERS = new Set(["\\", "`", "!", "[", "<", "*", "_", "~", "\n"]);
+const DATASET_CODE_BOUNDARY = /[\p{L}\p{N}_]/u;
+
+export function eurostatDatasetUrl(datasetCode) {
+  const code = String(datasetCode || "").trim();
+  if (!code) return "";
+  return `https://ec.europa.eu/eurostat/databrowser/view/${encodeURIComponent(code)}/default/table?lang=en`;
+}
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -69,6 +76,28 @@ function appendLink(target, label, rawUrl) {
   target.appendChild(link);
 }
 
+function datasetLink(target, code, url) {
+  const link = element("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.appendChild(document.createTextNode(code));
+  target.appendChild(link);
+}
+
+function datasetCodeAt(source, index, datasetLinks) {
+  if (!datasetLinks?.length || DATASET_CODE_BOUNDARY.test(source[index - 1] || "")) return null;
+  for (const item of datasetLinks) {
+    if (
+      source.startsWith(item.code, index)
+      && !DATASET_CODE_BOUNDARY.test(source[index + item.code.length] || "")
+    ) {
+      return item;
+    }
+  }
+  return null;
+}
+
 function linkAt(source, index) {
   const image = source.startsWith("![", index);
   const labelStart = index + (image ? 2 : 1);
@@ -105,7 +134,7 @@ function linkAt(source, index) {
   };
 }
 
-function appendInline(target, source) {
+function appendInline(target, source, context = {}) {
   let index = 0;
   while (index < source.length) {
     const character = source[index];
@@ -124,7 +153,17 @@ function appendInline(target, source) {
           .slice(index + run.length, closing)
           .replace(/\s*\n\s*/g, " ")
           .replace(/^ | $/g, "");
-        target.appendChild(element("code", "", content));
+        const dataset = context.datasetLinks?.find((item) => item.code === content);
+        if (dataset) {
+          const link = element("a");
+          link.href = dataset.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.appendChild(element("code", "", content));
+          target.appendChild(link);
+        } else {
+          target.appendChild(element("code", "", content));
+        }
         index = closing + run.length;
         continue;
       }
@@ -165,7 +204,7 @@ function appendInline(target, source) {
       const closing = findClosingMarker(source, marker, index + 2);
       if (closing > index + 2) {
         const strong = element("strong");
-        appendInline(strong, source.slice(index + 2, closing));
+        appendInline(strong, source.slice(index + 2, closing), context);
         target.appendChild(strong);
         index = closing + 2;
         continue;
@@ -176,7 +215,7 @@ function appendInline(target, source) {
       const closing = findClosingMarker(source, "~~", index + 2);
       if (closing > index + 2) {
         const deleted = element("del");
-        appendInline(deleted, source.slice(index + 2, closing));
+        appendInline(deleted, source.slice(index + 2, closing), context);
         target.appendChild(deleted);
         index = closing + 2;
         continue;
@@ -194,7 +233,7 @@ function appendInline(target, source) {
         : findEmphasisClosing(source, character, index + 1);
       if (closing > index + 1) {
         const emphasis = element("em");
-        appendInline(emphasis, source.slice(index + 1, closing));
+        appendInline(emphasis, source.slice(index + 1, closing), context);
         target.appendChild(emphasis);
         index = closing + 1;
         continue;
@@ -212,6 +251,13 @@ function appendInline(target, source) {
       continue;
     }
 
+    const dataset = datasetCodeAt(source, index, context.datasetLinks);
+    if (dataset) {
+      datasetLink(target, dataset.code, dataset.url);
+      index += dataset.code.length;
+      continue;
+    }
+
     const bareUrl = source.slice(index).match(/^https?:\/\/[^\s<]+/i);
     if (bareUrl) {
       const url = bareUrl[0].replace(/[),.;:!?]+$/, "");
@@ -226,6 +272,7 @@ function appendInline(target, source) {
       && !INLINE_MARKERS.has(source[end])
       && !source.startsWith("http://", end)
       && !source.startsWith("https://", end)
+      && !datasetCodeAt(source, end, context.datasetLinks)
     ) {
       end += 1;
     }
@@ -269,7 +316,7 @@ function isTableDivider(line) {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
 
-function renderTable(lines, start, container) {
+function renderTable(lines, start, container, context) {
   const headers = splitTableRow(lines[start]);
   const alignments = splitTableRow(lines[start + 1]).map((cell) => {
     if (cell.startsWith(":") && cell.endsWith(":")) return "center";
@@ -282,7 +329,7 @@ function renderTable(lines, start, container) {
   headers.forEach((header, index) => {
     const th = element("th");
     th.style.textAlign = alignments[index] || "left";
-    appendInline(th, header);
+    appendInline(th, header, context);
     headerRow.appendChild(th);
   });
   thead.appendChild(headerRow);
@@ -295,7 +342,7 @@ function renderTable(lines, start, container) {
     splitTableRow(lines[cursor]).forEach((value, index) => {
       const td = element("td");
       td.style.textAlign = alignments[index] || "left";
-      appendInline(td, value);
+      appendInline(td, value, context);
       row.appendChild(td);
     });
     tbody.appendChild(row);
@@ -319,7 +366,7 @@ function listMatch(line) {
   };
 }
 
-function renderList(lines, start, container) {
+function renderList(lines, start, container, context) {
   const first = listMatch(lines[start]);
   const root = element(first.ordered ? "ol" : "ul");
   if (first.ordered && first.start !== 1) root.start = first.start;
@@ -356,10 +403,10 @@ function renderList(lines, start, container) {
       checkbox.disabled = true;
       item.appendChild(checkbox);
       const copy = element("span");
-      appendInline(copy, task[2]);
+      appendInline(copy, task[2], context);
       item.appendChild(copy);
     } else {
-      appendInline(item, match.content);
+      appendInline(item, match.content, context);
     }
     level.list.appendChild(item);
     level.item = item;
@@ -368,7 +415,7 @@ function renderList(lines, start, container) {
   return cursor;
 }
 
-function renderBlocks(container, source) {
+function renderBlocks(container, source, context) {
   const lines = source.split("\n");
   let cursor = 0;
   while (cursor < lines.length) {
@@ -417,7 +464,7 @@ function renderBlocks(container, source) {
       && /^\s*(=+|-+)\s*$/.test(lines[cursor + 1])
     ) {
       const node = element(lines[cursor + 1].includes("=") ? "h1" : "h2");
-      appendInline(node, trimmed);
+      appendInline(node, trimmed, context);
       container.appendChild(node);
       cursor += 2;
       continue;
@@ -426,7 +473,7 @@ function renderBlocks(container, source) {
     const heading = trimmed.match(/^(#{1,6})\s+(.+?)\s*#*$/);
     if (heading) {
       const node = element(`h${heading[1].length}`);
-      appendInline(node, heading[2]);
+      appendInline(node, heading[2], context);
       container.appendChild(node);
       cursor += 1;
       continue;
@@ -445,7 +492,7 @@ function renderBlocks(container, source) {
         cursor += 1;
       }
       const blockquote = element("blockquote");
-      renderBlocks(blockquote, quoted.join("\n"));
+      renderBlocks(blockquote, quoted.join("\n"), context);
       container.appendChild(blockquote);
       continue;
     }
@@ -455,12 +502,12 @@ function renderBlocks(container, source) {
       && line.includes("|")
       && isTableDivider(lines[cursor + 1])
     ) {
-      cursor = renderTable(lines, cursor, container);
+      cursor = renderTable(lines, cursor, container, context);
       continue;
     }
 
     if (listMatch(line)) {
-      cursor = renderList(lines, cursor, container);
+      cursor = renderList(lines, cursor, container, context);
       continue;
     }
 
@@ -487,7 +534,7 @@ function renderBlocks(container, source) {
       cursor += 1;
     }
     const node = element("p");
-    appendInline(node, paragraph.join("\n"));
+    appendInline(node, paragraph.join("\n"), context);
     container.appendChild(node);
   }
 }
@@ -511,14 +558,20 @@ export function normalizeMarkdown(value) {
   return source;
 }
 
-export function renderMarkdown(container, value) {
+export function renderMarkdown(container, value, options = {}) {
   container.replaceChildren();
   const source = normalizeMarkdown(value);
   if (!source) return;
-  renderBlocks(container, source);
+  const datasetLinks = [...new Set(options.datasetCodes || [])]
+    .map((code) => String(code || "").trim())
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length)
+    .map((code) => ({ code, url: eurostatDatasetUrl(code) }));
+  renderBlocks(container, source, { datasetLinks });
 }
 
 export const markdownTestUtils = {
+  datasetCodeAt,
   isTableDivider,
   splitTableRow,
 };

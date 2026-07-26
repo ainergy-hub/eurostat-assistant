@@ -186,6 +186,9 @@ A successful chat result follows this public contract:
 }
 ```
 
+Dataset codes shown in answers and source cards link to the corresponding Eurostat Data Browser
+page. The separate API-query link preserves the exact filtered request used for the result.
+
 When the agent needs clarification, it can search and inspect candidate datasets without fetching
 observations. Its grounded question is returned in `answer`, while `result` remains `null`. A failed
 lookup can also return a conversational `answer` with no result.

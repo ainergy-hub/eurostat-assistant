@@ -6,7 +6,7 @@ import {
   titleFromPrompt,
 } from "./chat_state.js";
 import { createChartSection } from "./chart.js";
-import { renderMarkdown } from "./markdown.js";
+import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;
 const MAX_CHATS = 30;
@@ -617,13 +617,20 @@ function createProvenance(result) {
 
   sources.forEach((dataset, index) => {
     const sourceLink = element("a", "", `${dataset.code || "Dataset"} ↗`);
-    sourceLink.href = dataset.source_url;
+    sourceLink.href = eurostatDatasetUrl(dataset.code) || dataset.source_url;
     sourceLink.target = "_blank";
-    sourceLink.rel = "noreferrer";
+    sourceLink.rel = "noopener noreferrer";
     const suffix = sources.length > 1 ? ` ${index + 1}` : "";
     grid.appendChild(sourceItem(`Eurostat dataset${suffix}`, sourceLink));
     grid.appendChild(sourceItem(`Title${suffix}`, dataset.title));
     grid.appendChild(sourceItem(`Updated${suffix}`, dataset.updated || "Not reported"));
+    if (dataset.source_url) {
+      const queryLink = element("a", "", "Open filtered API query ↗");
+      queryLink.href = dataset.source_url;
+      queryLink.target = "_blank";
+      queryLink.rel = "noopener noreferrer";
+      grid.appendChild(sourceItem(`API query${suffix}`, queryLink));
+    }
   });
 
   const chips = element("div", "filter-chips");
@@ -638,6 +645,21 @@ function createProvenance(result) {
 function toolCallLabel(toolCalls) {
   if (!Number.isInteger(toolCalls) || toolCalls < 0) return "";
   return `${toolCalls} tool ${toolCalls === 1 ? "call" : "calls"}`;
+}
+
+function responseDatasetCodes(result, details) {
+  const codes = new Set();
+  const sources = result?.sources?.length ? result.sources : [result?.dataset];
+  for (const source of sources) {
+    if (source?.code && !source.code.includes("__")) codes.add(source.code);
+  }
+  for (const detail of details || []) {
+    for (const key of ["dataset", "x_dataset", "y_dataset"]) {
+      const code = detail?.arguments?.[key];
+      if (typeof code === "string" && code) codes.add(code);
+    }
+  }
+  return [...codes];
 }
 
 function addResponse(answerText, result, toolCalls, details = [], shouldScroll = true) {
@@ -657,7 +679,9 @@ function addResponse(answerText, result, toolCalls, details = [], shouldScroll =
   }
   response.appendChild(kicker);
   const answer = element("div", "answer");
-  renderMarkdown(answer, answerText);
+  renderMarkdown(answer, answerText, {
+    datasetCodes: responseDatasetCodes(result, details),
+  });
   response.appendChild(answer);
 
   if (result?.rows?.length) {
