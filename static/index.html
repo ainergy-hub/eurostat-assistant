@@ -3,39 +3,142 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Eurostat Sandbox Chat</title>
+    <meta
+      name="description"
+      content="Ask questions of official Eurostat data and receive a sourced answer, chart, and table."
+    />
+    <title>Eurostat Lens — Ask official European data</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="header">
-        <div>
-          <p class="eyebrow">E2B sandbox agent</p>
-          <h1>Eurostat Chat</h1>
+    <div class="app-layout">
+      <aside class="sidebar" id="sidebar" aria-label="Investigations">
+        <div class="sidebar-header">
+          <a class="brand" href="/" aria-label="Eurostat Lens home">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span>Eurostat Lens</span>
+          </a>
+          <button class="sidebar-close" id="sidebar-close" type="button" aria-label="Close chat list">
+            ×
+          </button>
         </div>
-        <div class="status" id="status">Checking keys...</div>
-      </section>
 
-      <section class="chat" id="chat">
-        <article class="message assistant">
-          <div class="bubble">
-            Ask a Eurostat question, for example: "What is Germany's population trend over the last 5 years?"
+        <button class="new-chat-button" id="new-chat" type="button">
+          <span>New investigation</span>
+          <span aria-hidden="true">＋</span>
+        </button>
+
+        <div class="chat-nav-heading">
+          <span>Investigations</span>
+          <span id="chat-count">0</span>
+        </div>
+        <nav class="chat-list" id="chat-list" aria-label="Saved chats"></nav>
+
+        <div class="sidebar-foot">
+          <span class="local-icon" aria-hidden="true">◌</span>
+          <p>
+            Chats stay on this device. Older turns are compacted before they are sent to the agent.
+          </p>
+        </div>
+      </aside>
+      <button class="sidebar-backdrop" id="sidebar-backdrop" type="button" aria-label="Close chat list"></button>
+
+      <main class="shell">
+        <header class="topbar">
+          <div class="thread-identity">
+            <button class="menu-button" id="menu-button" type="button" aria-label="Open chat list">
+              ☰
+            </button>
+            <div>
+              <span class="thread-label">Current investigation</span>
+              <strong class="thread-title" id="current-chat-title">New investigation</strong>
+            </div>
           </div>
-        </article>
-      </section>
+          <div class="topbar-meta">
+            <span class="context-status" id="context-status" hidden>Older context compacted</span>
+            <div class="status-wrap">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span class="status" id="status">Checking connection</span>
+            </div>
+          </div>
+        </header>
 
-      <form class="composer" id="composer">
-        <textarea
-          id="prompt"
-          name="prompt"
-          rows="2"
-          placeholder="Ask for Eurostat data..."
-          autocomplete="off"
-          required
-        ></textarea>
-        <button type="submit" id="send">Send</button>
-      </form>
-    </main>
+        <section class="hero" id="hero">
+          <p class="eyebrow">Official European statistics, conversationally</p>
+          <h1>Ask Europe a<br />better question.</h1>
+          <p class="hero-copy">
+            Start a focused investigation. The agent finds the right Eurostat dataset,
+            checks its dimensions, and returns a sourced answer you can explore.
+          </p>
+          <div class="suggestions" aria-label="Example questions">
+            <button
+              class="suggestion"
+              type="button"
+              data-prompt="Compare the population of Germany, France, and Italy over the latest 5 years."
+            >
+              Population across DE, FR &amp; IT
+            </button>
+            <button
+              class="suggestion"
+              type="button"
+              data-prompt="How has annual inflation changed in the EU since 2020?"
+            >
+              EU inflation since 2020
+            </button>
+            <button
+              class="suggestion"
+              type="button"
+              data-prompt="Compare the unemployment rate in Spain and Portugal over the latest 8 years."
+            >
+              Spain vs Portugal employment
+            </button>
+          </div>
+        </section>
+
+        <section class="conversation" id="chat" aria-live="polite"></section>
+
+        <section class="ask-panel" aria-label="Ask Eurostat">
+          <form class="composer" id="composer">
+            <label class="sr-only" for="prompt">Ask a question about Eurostat data</label>
+            <textarea
+              id="prompt"
+              name="prompt"
+              rows="2"
+              maxlength="4000"
+              placeholder="Ask a follow-up or investigate a new angle..."
+              autocomplete="off"
+              required
+            ></textarea>
+            <button class="send-button" type="submit" id="send">
+              <span>Ask Eurostat</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          </form>
+          <div class="composer-meta">
+            <span>Recent turns + compact summary sent to the agent</span>
+            <span>Dataset, filters, and flags included</span>
+          </div>
+        </section>
+
+        <footer>
+          <span>Open-source proof of concept</span>
+          <a href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
+            Data from Eurostat ↗
+          </a>
+        </footer>
+      </main>
+    </div>
+
+    <template id="pending-template">
+      <article class="response pending-response">
+        <div class="response-kicker">Eurostat agent</div>
+        <div class="progress-row">
+          <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p class="progress-label">Finding candidate datasets</p>
+        </div>
+      </article>
+    </template>
+
     <script src="/static/app.js" type="module"></script>
   </body>
 </html>

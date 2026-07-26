@@ -1,7 +1,7 @@
 [project]
-name = "eurostat-e2b-chat"
-version = "0.1.0"
-description = "FastAPI chat UI that runs a Eurostat-skilled agent inside an E2B sandbox."
+name = "eurostat-lens"
+version = "0.2.0"
+description = "Reference web app for asking sourced questions of official Eurostat data."
 requires-python = ">=3.10"
 dependencies = [
   "e2b>=2.15.0",

@@ -37,7 +37,7 @@ esac
 PORT="${PORT:-8000}"
 HOST="${HOST:-127.0.0.1}"
 
-echo "Starting Eurostat E2B Chat on http://${HOST}:${PORT}"
+echo "Starting Eurostat Lens on http://${HOST}:${PORT}"
 echo "Using OpenRouter model: ${OPENROUTER_MODEL}"
 
 exec uv run uvicorn app.main:app --host "$HOST" --port "$PORT"

@@ -197,8 +197,27 @@ def fetch(args: argparse.Namespace) -> None:
         params.append(("time", time_value))
     data = get_json(build_url(args.dataset, params))
     rows = flatten(data)
+    total_rows = len(rows)
+    truncated = bool(args.max_rows and total_rows > args.max_rows)
+    if args.max_rows:
+        rows = rows[: args.max_rows]
     if args.output == "json":
-        print(json.dumps({"metadata": {"label": data.get("label"), "updated": data.get("updated")}, "rows": rows}, indent=2, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "metadata": {
+                        "label": data.get("label"),
+                        "updated": data.get("updated"),
+                        "total_rows": total_rows,
+                        "returned_rows": len(rows),
+                        "truncated": truncated,
+                    },
+                    "rows": rows,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
         return
     if not rows:
         return
@@ -225,6 +244,12 @@ def main() -> None:
     fetch_parser.add_argument("--last-time-period", type=int)
     fetch_parser.add_argument("--time", action="append", default=[])
     fetch_parser.add_argument("--output", choices=["csv", "json"], default="csv")
+    fetch_parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=500,
+        help="Maximum observations to emit after flattening (default: 500).",
+    )
 
     args = parser.parse_args()
     if args.command == "search":

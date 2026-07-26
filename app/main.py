@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import anyio
 from fastapi import FastAPI, HTTPException
@@ -16,7 +16,7 @@ from .e2b_agent import AgentConfig, AgentError, run_eurostat_agent
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = ROOT / "static"
 
-app = FastAPI(title="Eurostat E2B Chat")
+app = FastAPI(title="Eurostat Lens")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -34,12 +34,42 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
-    history: list[ChatMessage] = Field(default_factory=list, max_length=12)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=6)
+    summary: str = Field(default="", max_length=2400)
+
+
+class DatasetInfo(BaseModel):
+    code: str
+    title: str
+    updated: str | None = None
+    source_url: str
+
+
+class ColumnInfo(BaseModel):
+    key: str
+    label: str
+
+
+class ChartIntent(BaseModel):
+    type: Literal["none", "line", "bar"]
+    x: str | None = None
+    y: str | None = None
+    series: str | None = None
+    title: str | None = None
+
+
+class DataResult(BaseModel):
+    dataset: DatasetInfo
+    filters: dict[str, list[str]]
+    columns: list[ColumnInfo]
+    rows: list[dict[str, Any]] = Field(max_length=500)
+    chart: ChartIntent
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
     answer: str
-    sandbox_stdout: str = ""
+    result: DataResult | None = None
 
 
 @app.get("/")
@@ -51,8 +81,7 @@ def index() -> FileResponse:
 def health() -> dict[str, bool]:
     return {
         "ok": True,
-        "has_e2b_api_key": bool(os.getenv("E2B_API_KEY")),
-        "has_openrouter_api_key": bool(os.getenv("OPENROUTER_API_KEY")),
+        "agent_ready": bool(os.getenv("E2B_API_KEY") and os.getenv("OPENROUTER_API_KEY")),
     }
 
 
@@ -70,9 +99,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
             run_eurostat_agent,
             request.message,
             [message.model_dump() for message in request.history],
+            request.summary,
             config,
         )
     except AgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return ChatResponse(answer=result.answer, sandbox_stdout=result.stdout)
+    return ChatResponse(answer=result.answer, result=result.result)

@@ -27,6 +27,7 @@ class AgentConfig:
 @dataclass(frozen=True)
 class AgentResult:
     answer: str
+    result: dict[str, Any] | None
     stdout: str
 
 
@@ -44,7 +45,12 @@ def _command_text(result: Any, attr: str) -> str:
     return str(value)
 
 
-def run_eurostat_agent(query: str, history: list[dict[str, str]], config: AgentConfig) -> AgentResult:
+def run_eurostat_agent(
+    query: str,
+    history: list[dict[str, str]],
+    summary: str,
+    config: AgentConfig,
+) -> AgentResult:
     _require_env("E2B_API_KEY")
     openrouter_api_key = _require_env("OPENROUTER_API_KEY")
 
@@ -55,6 +61,7 @@ def run_eurostat_agent(query: str, history: list[dict[str, str]], config: AgentC
     payload = {
         "query": query,
         "history": history,
+        "summary": summary,
         "model": config.model,
     }
 
@@ -88,4 +95,8 @@ def run_eurostat_agent(query: str, history: list[dict[str, str]], config: AgentC
     if not answer:
         raise AgentError("Sandbox agent did not return an answer.")
 
-    return AgentResult(answer=answer, stdout=stdout)
+    structured_result = data.get("result")
+    if structured_result is not None and not isinstance(structured_result, dict):
+        raise AgentError("Sandbox agent returned an invalid structured result.")
+
+    return AgentResult(answer=answer, result=structured_result, stdout=stdout)

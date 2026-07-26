@@ -1,77 +1,799 @@
+import { buildContextSummary, recentHistory, titleFromPrompt } from "./chat_state.js";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const COLORS = ["#164f43", "#e46633", "#376b88", "#9a7041", "#725c8e", "#5d8978"];
+const PAGE_SIZE = 12;
+const MAX_CHATS = 30;
+const STORAGE_KEY = "eurostat-lens-chats-v1";
+
 const chat = document.querySelector("#chat");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
 const sendButton = document.querySelector("#send");
 const statusBadge = document.querySelector("#status");
+const statusWrap = document.querySelector(".status-wrap");
+const pendingTemplate = document.querySelector("#pending-template");
+const hero = document.querySelector("#hero");
+const chatList = document.querySelector("#chat-list");
+const chatCount = document.querySelector("#chat-count");
+const newChatButton = document.querySelector("#new-chat");
+const currentChatTitle = document.querySelector("#current-chat-title");
+const contextStatus = document.querySelector("#context-status");
+const sidebar = document.querySelector("#sidebar");
+const sidebarBackdrop = document.querySelector("#sidebar-backdrop");
+const menuButton = document.querySelector("#menu-button");
+const sidebarClose = document.querySelector("#sidebar-close");
 
-const history = [];
+let state = loadState();
+let inFlightChatId = null;
 
-function addMessage(role, content, pending = false) {
-  const article = document.createElement("article");
-  article.className = `message ${role}${pending ? " pending" : ""}`;
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = content;
-  article.appendChild(bubble);
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function svgElement(tag, attributes = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+  return node;
+}
+
+function createId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function newChatRecord() {
+  const now = new Date().toISOString();
+  return {
+    id: createId(),
+    title: "New investigation",
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+  };
+}
+
+function loadState() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (stored?.chats?.length) {
+      const chats = stored.chats
+        .filter((item) => item && typeof item.id === "string" && Array.isArray(item.messages))
+        .slice(0, MAX_CHATS);
+      const activeChatId = chats.some((item) => item.id === stored.activeChatId)
+        ? stored.activeChatId
+        : chats[0]?.id;
+      if (chats.length && activeChatId) return { chats, activeChatId };
+    }
+  } catch {
+    // A malformed browser cache should never prevent the app from starting.
+  }
+  const firstChat = newChatRecord();
+  return { chats: [firstChat], activeChatId: firstChat.id };
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function activeChat() {
+  return state.chats.find((item) => item.id === state.activeChatId);
+}
+
+function formatChatDate(value) {
+  const date = new Date(value);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function openSidebar() {
+  document.body.classList.add("sidebar-open");
+}
+
+function closeSidebar() {
+  document.body.classList.remove("sidebar-open");
+}
+
+function renderChatList() {
+  chatList.replaceChildren();
+  const sorted = [...state.chats].sort(
+    (left, right) => new Date(right.updatedAt) - new Date(left.updatedAt),
+  );
+  chatCount.textContent = String(sorted.length);
+
+  for (const record of sorted) {
+    const row = element("div", `chat-list-item${record.id === state.activeChatId ? " active" : ""}`);
+    const select = element("button", "chat-select");
+    select.type = "button";
+    select.setAttribute("aria-current", record.id === state.activeChatId ? "page" : "false");
+    const text = element("span", "chat-select-copy");
+    const turnCount = Math.ceil(record.messages.length / 2);
+    text.append(
+      element("strong", "", record.title),
+      element(
+        "small",
+        "",
+        `${turnCount} turn${turnCount === 1 ? "" : "s"} · ${formatChatDate(record.updatedAt)}`,
+      ),
+    );
+    select.appendChild(text);
+    select.addEventListener("click", () => selectChat(record.id));
+
+    const remove = element("button", "chat-delete", "×");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Delete ${record.title}`);
+    remove.addEventListener("click", () => deleteChat(record.id));
+    row.append(select, remove);
+    chatList.appendChild(row);
+  }
+}
+
+function selectChat(id) {
+  if (!state.chats.some((item) => item.id === id)) return;
+  state.activeChatId = id;
+  saveState();
+  renderWorkspace();
+  closeSidebar();
+}
+
+function createChat() {
+  const current = activeChat();
+  if (current && current.messages.length === 0) {
+    promptInput.focus();
+    closeSidebar();
+    return;
+  }
+  if (state.chats.length >= MAX_CHATS) {
+    window.alert("This proof of concept keeps up to 30 investigations. Delete one before starting another.");
+    return;
+  }
+  const record = newChatRecord();
+  state.chats.push(record);
+  state.activeChatId = record.id;
+  saveState();
+  renderWorkspace();
+  closeSidebar();
+  promptInput.focus();
+}
+
+function deleteChat(id) {
+  if (id === inFlightChatId) {
+    window.alert("Wait for this investigation to finish before deleting it.");
+    return;
+  }
+  const record = state.chats.find((item) => item.id === id);
+  if (!record || !window.confirm(`Delete “${record.title}” from this device?`)) return;
+  state.chats = state.chats.filter((item) => item.id !== id);
+  if (!state.chats.length) state.chats.push(newChatRecord());
+  if (state.activeChatId === id) state.activeChatId = state.chats[0].id;
+  saveState();
+  renderWorkspace();
+}
+
+function addQuestion(content) {
+  const article = element("article", "question", content);
   chat.appendChild(article);
-  chat.scrollTop = chat.scrollHeight;
   return article;
+}
+
+function renderAnswer(container, markdown) {
+  function appendInline(target, text) {
+    const fragments = text.trim().split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+    for (const fragment of fragments) {
+      if (fragment.startsWith("`") && fragment.endsWith("`")) {
+        target.appendChild(element("code", "", fragment.slice(1, -1)));
+      } else if (fragment.startsWith("**") && fragment.endsWith("**")) {
+        target.appendChild(element("strong", "", fragment.slice(2, -2)));
+      } else {
+        target.appendChild(document.createTextNode(fragment));
+      }
+    }
+  }
+
+  const lines = markdown.split("\n").filter((line) => !line.trim().startsWith("|"));
+  let paragraphLines = [];
+  let list = null;
+  function flushParagraph() {
+    if (!paragraphLines.length) return;
+    const p = element("p");
+    appendInline(p, paragraphLines.join(" "));
+    container.appendChild(p);
+    paragraphLines = [];
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      list = null;
+    } else if (/^[-*]\s+/.test(trimmed)) {
+      flushParagraph();
+      if (!list) {
+        list = element("ul");
+        container.appendChild(list);
+      }
+      const item = element("li");
+      appendInline(item, trimmed.replace(/^[-*]\s+/, ""));
+      list.appendChild(item);
+    } else {
+      list = null;
+      paragraphLines.push(trimmed);
+    }
+  }
+  flushParagraph();
+}
+
+function addPending() {
+  const pending = pendingTemplate.content.firstElementChild.cloneNode(true);
+  chat.appendChild(pending);
+  const label = pending.querySelector(".progress-label");
+  const stages = [
+    "Inspecting dataset dimensions",
+    "Fetching a bounded data slice",
+    "Checking units and observation flags",
+    "Preparing the answer and visualisation",
+  ];
+  let stage = 0;
+  const timer = window.setInterval(() => {
+    label.textContent = stages[Math.min(stage, stages.length - 1)];
+    stage += 1;
+  }, 2600);
+  pending.scrollIntoView({ behavior: "smooth", block: "center" });
+  return { pending, timer };
+}
+
+function addError(message) {
+  const response = element("article", "response error-card");
+  response.appendChild(element("div", "response-kicker", "Could not complete the request"));
+  const answer = element("div", "answer");
+  answer.appendChild(
+    element(
+      "p",
+      "",
+      message || "The Eurostat agent did not return a result. Check the app configuration and try again.",
+    ),
+  );
+  response.appendChild(answer);
+  chat.appendChild(response);
+}
+
+function displayValue(value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "number") {
+    return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
+  }
+  return String(value);
+}
+
+function compareValues(a, b) {
+  const left = typeof a === "number" ? a : String(a ?? "").toLocaleLowerCase();
+  const right = typeof b === "number" ? b : String(b ?? "").toLocaleLowerCase();
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function createTableSection(result) {
+  const section = element("section", "result-section");
+  const heading = element("div", "section-heading");
+  const headingCopy = element("div");
+  headingCopy.appendChild(element("h2", "", "Observations"));
+  headingCopy.appendChild(
+    element("p", "", `${result.rows.length} rows returned by the bounded query`),
+  );
+  heading.appendChild(headingCopy);
+  section.appendChild(heading);
+
+  const tools = element("div", "table-tools");
+  const search = element("input", "table-search");
+  search.type = "search";
+  search.placeholder = "Filter returned observations";
+  search.setAttribute("aria-label", "Filter table rows");
+  const download = element("button", "secondary-button", "Download CSV ↓");
+  download.type = "button";
+  tools.append(search, download);
+  section.appendChild(tools);
+
+  const tableScroll = element("div", "table-scroll");
+  const table = element("table");
+  const thead = element("thead");
+  const headerRow = element("tr");
+  const tbody = element("tbody");
+  const columns = result.columns?.length
+    ? result.columns
+    : Object.keys(result.rows[0] || {}).map((key) => ({ key, label: key }));
+  let sortKey = columns.find((column) => column.key.includes("time"))?.key || columns[0]?.key;
+  let sortDirection = "asc";
+  let page = 0;
+  let query = "";
+
+  for (const column of columns) {
+    const th = element("th");
+    if (column.key === "value") th.classList.add("numeric");
+    const button = element("button", "", column.label);
+    button.type = "button";
+    button.addEventListener("click", () => {
+      if (sortKey === column.key) {
+        sortDirection = sortDirection === "asc" ? "desc" : "asc";
+      } else {
+        sortKey = column.key;
+        sortDirection = "asc";
+      }
+      page = 0;
+      renderRows();
+    });
+    th.appendChild(button);
+    headerRow.appendChild(th);
+  }
+  thead.appendChild(headerRow);
+  table.append(thead, tbody);
+  tableScroll.appendChild(table);
+  section.appendChild(tableScroll);
+
+  const pagination = element("div", "pagination");
+  const pageLabel = element("span");
+  const previous = element("button", "", "←");
+  previous.type = "button";
+  previous.setAttribute("aria-label", "Previous table page");
+  const next = element("button", "", "→");
+  next.type = "button";
+  next.setAttribute("aria-label", "Next table page");
+  pagination.append(previous, pageLabel, next);
+  section.appendChild(pagination);
+
+  function filteredRows() {
+    const matching = result.rows.filter((row) =>
+      columns.some((column) =>
+        String(row[column.key] ?? "")
+          .toLocaleLowerCase()
+          .includes(query),
+      ),
+    );
+    return matching.sort((a, b) => {
+      const comparison = compareValues(a[sortKey], b[sortKey]);
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }
+
+  function renderRows() {
+    const rows = filteredRows();
+    const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+    page = Math.min(page, pageCount - 1);
+    tbody.replaceChildren();
+    for (const row of rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
+      const tr = element("tr");
+      for (const column of columns) {
+        const td = element("td", column.key === "value" ? "numeric" : "", displayValue(row[column.key]));
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    if (!rows.length) {
+      const tr = element("tr");
+      const td = element("td", "", "No rows match this filter.");
+      td.colSpan = columns.length;
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+    pageLabel.textContent = `Page ${page + 1} of ${pageCount}`;
+    previous.disabled = page === 0;
+    next.disabled = page >= pageCount - 1;
+  }
+
+  search.addEventListener("input", () => {
+    query = search.value.trim().toLocaleLowerCase();
+    page = 0;
+    renderRows();
+  });
+  previous.addEventListener("click", () => {
+    page -= 1;
+    renderRows();
+  });
+  next.addEventListener("click", () => {
+    page += 1;
+    renderRows();
+  });
+  download.addEventListener("click", () => downloadCsv(result, columns));
+  renderRows();
+  return section;
+}
+
+function csvCell(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function downloadCsv(result, columns) {
+  const lines = [
+    columns.map((column) => csvCell(column.label)).join(","),
+    ...result.rows.map((row) => columns.map((column) => csvCell(row[column.key])).join(",")),
+  ];
+  const blob = new Blob([`\ufeff${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const code = result.dataset?.code || "eurostat";
+  link.href = URL.createObjectURL(blob);
+  link.download = `${code}-observations.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function addText(svg, text, x, y, attributes = {}) {
+  const node = svgElement("text", {
+    x,
+    y,
+    fill: "#65706b",
+    "font-size": 11,
+    "font-family": "Inter, system-ui, sans-serif",
+    ...attributes,
+  });
+  node.textContent = text;
+  svg.appendChild(node);
+  return node;
+}
+
+function createChartSection(result) {
+  if (!result.chart || result.chart.type === "none" || !result.rows.length) return null;
+  const spec = result.chart;
+  const numericRows = result.rows.filter((row) => Number.isFinite(Number(row[spec.y])));
+  if (!numericRows.length) return null;
+
+  const section = element("section", "result-section");
+  const heading = element("div", "section-heading");
+  const copy = element("div");
+  copy.appendChild(element("h2", "", spec.type === "line" ? "Trend" : "Comparison"));
+  copy.appendChild(element("p", "", "Hover over a mark to inspect an observation"));
+  heading.appendChild(copy);
+  section.appendChild(heading);
+  const wrap = element("div", "chart-wrap");
+  section.appendChild(wrap);
+
+  const width = 920;
+  const height = 350;
+  const margin = { top: 18, right: 24, bottom: 58, left: 68 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const svg = svgElement("svg", {
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": spec.title || "Eurostat data chart",
+  });
+  wrap.appendChild(svg);
+  const tooltip = element("div", "chart-tooltip");
+  tooltip.hidden = true;
+  wrap.appendChild(tooltip);
+
+  const xValues = [...new Set(numericRows.map((row) => String(row[spec.x] ?? "")))].sort((a, b) => {
+    const numeric = Number(a) - Number(b);
+    return Number.isNaN(numeric) ? a.localeCompare(b) : numeric;
+  });
+  const yValues = numericRows.map((row) => Number(row[spec.y]));
+  const maxY = Math.max(...yValues);
+  const minObserved = Math.min(...yValues);
+  const minY = spec.type === "bar" ? Math.min(0, minObserved) : minObserved > 0 ? minObserved * 0.96 : minObserved;
+  const yRange = maxY - minY || Math.max(Math.abs(maxY), 1);
+  const xPoint = (value) =>
+    margin.left + (xValues.length === 1 ? plotWidth / 2 : (xValues.indexOf(String(value)) / (xValues.length - 1)) * plotWidth);
+  const yPoint = (value) => margin.top + plotHeight - ((Number(value) - minY) / yRange) * plotHeight;
+
+  for (let index = 0; index <= 4; index += 1) {
+    const value = minY + (yRange * index) / 4;
+    const y = yPoint(value);
+    svg.appendChild(
+      svgElement("line", {
+        x1: margin.left,
+        x2: width - margin.right,
+        y1: y,
+        y2: y,
+        stroke: "#dfdbd1",
+        "stroke-width": 1,
+      }),
+    );
+    addText(svg, new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value), margin.left - 10, y + 4, {
+      "text-anchor": "end",
+    });
+  }
+
+  const tickStep = Math.max(1, Math.ceil(xValues.length / 8));
+  xValues.forEach((value, index) => {
+    if (index % tickStep !== 0 && index !== xValues.length - 1) return;
+    addText(svg, value, xPoint(value), height - margin.bottom + 24, { "text-anchor": "middle" });
+  });
+  svg.appendChild(
+    svgElement("line", {
+      x1: margin.left,
+      x2: width - margin.right,
+      y1: margin.top + plotHeight,
+      y2: margin.top + plotHeight,
+      stroke: "#8f958f",
+    }),
+  );
+
+  const seriesField = spec.series;
+  const seriesValues = seriesField
+    ? [...new Set(numericRows.map((row) => String(row[seriesField] ?? "Series")))]
+    : ["Value"];
+
+  function showTooltip(event, row, seriesName) {
+    tooltip.replaceChildren(
+      element("strong", "", seriesName),
+      document.createElement("br"),
+      document.createTextNode(`${row[spec.x]} · ${displayValue(Number(row[spec.y]))}`),
+    );
+    tooltip.hidden = false;
+    const bounds = wrap.getBoundingClientRect();
+    tooltip.style.left = `${event.clientX - bounds.left}px`;
+    tooltip.style.top = `${event.clientY - bounds.top}px`;
+  }
+
+  function hideTooltip() {
+    tooltip.hidden = true;
+  }
+
+  if (spec.type === "line") {
+    seriesValues.forEach((seriesName, seriesIndex) => {
+      const rows = numericRows
+        .filter((row) => !seriesField || String(row[seriesField] ?? "Series") === seriesName)
+        .sort((a, b) => xValues.indexOf(String(a[spec.x])) - xValues.indexOf(String(b[spec.x])));
+      const color = COLORS[seriesIndex % COLORS.length];
+      const path = rows
+        .map((row, index) => `${index ? "L" : "M"} ${xPoint(row[spec.x])} ${yPoint(row[spec.y])}`)
+        .join(" ");
+      svg.appendChild(
+        svgElement("path", {
+          d: path,
+          fill: "none",
+          stroke: color,
+          "stroke-width": 2.5,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        }),
+      );
+      rows.forEach((row) => {
+        const point = svgElement("circle", {
+          cx: xPoint(row[spec.x]),
+          cy: yPoint(row[spec.y]),
+          r: 4,
+          fill: color,
+          stroke: "#fffdf8",
+          "stroke-width": 2,
+          tabindex: 0,
+        });
+        point.addEventListener("pointerenter", (event) => showTooltip(event, row, seriesName));
+        point.addEventListener("pointerleave", hideTooltip);
+        point.addEventListener("focus", (event) => {
+          const bounds = event.target.getBoundingClientRect();
+          showTooltip({ clientX: bounds.left, clientY: bounds.top }, row, seriesName);
+        });
+        point.addEventListener("blur", hideTooltip);
+        svg.appendChild(point);
+      });
+    });
+  } else {
+    const band = plotWidth / Math.max(xValues.length, 1);
+    const barWidth = Math.max(8, Math.min(62, band * 0.62));
+    numericRows.forEach((row, index) => {
+      const value = Number(row[spec.y]);
+      const y = yPoint(Math.max(value, 0));
+      const zero = yPoint(0);
+      const bar = svgElement("rect", {
+        x: xPoint(row[spec.x]) - barWidth / 2,
+        y: Math.min(y, zero),
+        width: barWidth,
+        height: Math.max(1, Math.abs(zero - y)),
+        rx: 3,
+        fill: COLORS[index % COLORS.length],
+        tabindex: 0,
+      });
+      bar.addEventListener("pointerenter", (event) => showTooltip(event, row, String(row[spec.x])));
+      bar.addEventListener("pointerleave", hideTooltip);
+      svg.appendChild(bar);
+    });
+  }
+
+  if (seriesValues.length > 1) {
+    const legend = element("div", "chart-legend");
+    seriesValues.forEach((seriesName, index) => {
+      const item = element("span", "legend-item");
+      const swatch = element("span", "legend-swatch");
+      swatch.style.background = COLORS[index % COLORS.length];
+      item.append(swatch, document.createTextNode(seriesName));
+      legend.appendChild(item);
+    });
+    section.appendChild(legend);
+  }
+  return section;
+}
+
+function createProvenance(result) {
+  const section = element("section", "provenance");
+  section.appendChild(element("h2", "", "Source"));
+  const grid = element("div", "source-grid");
+  const dataset = result.dataset || {};
+
+  function sourceItem(label, valueNode) {
+    const item = element("div", "source-item");
+    item.appendChild(element("span", "source-label", label));
+    if (valueNode instanceof Node) {
+      valueNode.classList.add("source-value");
+      item.appendChild(valueNode);
+    } else {
+      item.appendChild(element("span", "source-value", valueNode || "—"));
+    }
+    return item;
+  }
+
+  const sourceLink = element("a", "", `${dataset.code || "Dataset"} ↗`);
+  sourceLink.href = dataset.source_url;
+  sourceLink.target = "_blank";
+  sourceLink.rel = "noreferrer";
+  grid.appendChild(sourceItem("Eurostat dataset", sourceLink));
+  grid.appendChild(sourceItem("Title", dataset.title));
+  grid.appendChild(sourceItem("Updated", dataset.updated || "Not reported"));
+
+  const chips = element("div", "filter-chips");
+  Object.entries(result.filters || {}).forEach(([key, values]) => {
+    for (const value of values) chips.appendChild(element("span", "filter-chip", `${key}=${value}`));
+  });
+  grid.appendChild(sourceItem("Applied filters", chips));
+  section.appendChild(grid);
+  return section;
+}
+
+function addResponse(answerText, result, shouldScroll = true) {
+  const response = element("article", "response");
+  response.appendChild(element("div", "response-kicker", "Eurostat agent"));
+  const answer = element("div", "answer");
+  renderAnswer(answer, answerText);
+  response.appendChild(answer);
+
+  if (result?.rows?.length) {
+    const chartSection = createChartSection(result);
+    if (chartSection) response.appendChild(chartSection);
+    response.appendChild(createTableSection(result));
+    if (result.warnings?.length) {
+      response.appendChild(element("p", "warning", result.warnings.join(" ")));
+    }
+    response.appendChild(createProvenance(result));
+  }
+  chat.appendChild(response);
+  if (shouldScroll) response.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderWorkspace() {
+  const record = activeChat();
+  if (!record) return;
+  chat.replaceChildren();
+  hero.hidden = record.messages.length > 0;
+  currentChatTitle.textContent = record.title;
+  const summary = buildContextSummary(record.messages);
+  contextStatus.hidden = !summary;
+  contextStatus.title = summary
+    ? "Older turns are represented by a bounded extractive summary to reduce model input."
+    : "";
+
+  for (const message of record.messages) {
+    if (message.role === "user") {
+      addQuestion(message.content);
+    } else {
+      addResponse(message.content, message.result, false);
+    }
+  }
+  renderChatList();
 }
 
 async function checkHealth() {
   try {
     const response = await fetch("/api/health");
     const data = await response.json();
-    if (data.has_e2b_api_key && data.has_openrouter_api_key) {
-      statusBadge.textContent = "Ready";
-      statusBadge.className = "status ready";
+    if (data.agent_ready) {
+      statusBadge.textContent = "Agent ready";
+      statusWrap.className = "status-wrap ready";
       return;
     }
-    statusBadge.textContent = "Missing API key";
-    statusBadge.className = "status error";
+    statusBadge.textContent = "Setup required";
+    statusWrap.className = "status-wrap error";
   } catch {
     statusBadge.textContent = "Backend offline";
-    statusBadge.className = "status error";
+    statusWrap.className = "status-wrap error";
   }
 }
 
 composer.addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = promptInput.value.trim();
-  if (!message) return;
+  const record = activeChat();
+  if (!message || !record || inFlightChatId) return;
 
-  addMessage("user", message);
-  history.push({ role: "user", content: message });
+  const priorMessages = [...record.messages];
+  const summary = buildContextSummary(priorMessages);
+  const history = recentHistory(priorMessages);
+  if (!record.messages.length) record.title = titleFromPrompt(message);
+  record.messages.push({ role: "user", content: message });
+  record.updatedAt = new Date().toISOString();
+  inFlightChatId = record.id;
+  saveState();
+  hero.hidden = true;
+  addQuestion(message);
+  currentChatTitle.textContent = record.title;
+  renderChatList();
   promptInput.value = "";
   sendButton.disabled = true;
-  const pending = addMessage("assistant", "Running Eurostat agent in E2B", true);
+  const { pending, timer } = addPending();
 
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history: history.slice(-10, -1) }),
+      body: JSON.stringify({ message, history, summary }),
     });
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.detail || "The agent request failed.");
     }
-    pending.classList.remove("pending");
-    pending.querySelector(".bubble").textContent = data.answer;
-    history.push({ role: "assistant", content: data.answer });
+    pending.remove();
+    const target = state.chats.find((item) => item.id === record.id);
+    if (target) {
+      target.messages.push({ role: "assistant", content: data.answer, result: data.result });
+      target.updatedAt = new Date().toISOString();
+      const saved = saveState();
+      if (state.activeChatId === target.id) {
+        addResponse(data.answer, data.result);
+        const updatedSummary = buildContextSummary(target.messages);
+        contextStatus.hidden = !updatedSummary;
+        contextStatus.title = updatedSummary
+          ? "Older turns are represented by a bounded extractive summary to reduce model input."
+          : "";
+        if (!saved) {
+          addError("The answer is available, but this browser could not persist the latest chat data.");
+        }
+      }
+      renderChatList();
+    }
   } catch (error) {
-    pending.classList.remove("pending");
-    pending.querySelector(".bubble").textContent = `Error: ${error.message}`;
+    pending.remove();
+    if (state.activeChatId === record.id) addError(error.message);
   } finally {
+    window.clearInterval(timer);
+    inFlightChatId = null;
     sendButton.disabled = false;
     promptInput.focus();
   }
 });
 
+document.querySelectorAll("[data-prompt]").forEach((button) => {
+  button.addEventListener("click", () => {
+    promptInput.value = button.dataset.prompt;
+    composer.requestSubmit();
+  });
+});
+
 promptInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
     composer.requestSubmit();
   }
 });
 
+newChatButton.addEventListener("click", createChat);
+menuButton.addEventListener("click", openSidebar);
+sidebarClose.addEventListener("click", closeSidebar);
+sidebarBackdrop.addEventListener("click", closeSidebar);
+window.addEventListener("storage", (event) => {
+  if (event.key !== STORAGE_KEY) return;
+  state = loadState();
+  renderWorkspace();
+});
+
+renderWorkspace();
 checkHealth();
