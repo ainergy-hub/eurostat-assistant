@@ -266,31 +266,6 @@ def tool_arguments(value: Any) -> tuple[str, dict[str, Any]]:
     return raw, {"raw": raw}
 
 
-def clarification_question(query: str, context_result: dict[str, Any] | None) -> str | None:
-    """Stop before searching when a broad concept can materially change the measure."""
-    if context_result:
-        return None
-    normalized = query.casefold()
-    if not re.search(r"\binnovation\b", normalized):
-        return None
-    explicit_proxies = (
-        "patent",
-        "r&d",
-        "research and development",
-        "research expenditure",
-        "researcher",
-        "innovation survey",
-        "innovation scoreboard",
-    )
-    if any(proxy in normalized for proxy in explicit_proxies):
-        return None
-    return (
-        "Which Eurostat measure should represent innovation: patent applications per million "
-        "inhabitants, R&D expenditure, researchers, or an innovation-survey indicator? The choice "
-        "changes the comparison, so I have not started a data lookup yet."
-    )
-
-
 def _call_fingerprint(name: str, arguments: dict[str, Any]) -> str:
     return f"{name}:{json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}"
 
@@ -853,7 +828,7 @@ Follow this local skill exactly:
 {skill_text}
 
 Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded queries. Your final answer must be concise, cite the dataset code and filters used, and mention the latest period used when relevant.
-Before calling a tool, ask a concise clarification question when the requested statistical concept could map to materially different measures. Do not explore several proxies for an ambiguous concept.
+When a concept could map to materially different Eurostat measures, perform bounded discovery before asking: run at most one catalogue search and inspect up to two credible candidates. Do not fetch observations for competing interpretations. If ambiguity remains, ask one concise question grounded in the discovered dataset titles, codes, units, dimensions, and coverage, and recommend the candidate that best matches the user's wording. If one candidate clearly matches, continue without asking and state any minor assumption.
 If the user provides an exact dataset code, inspect it directly without searching. Use at most two catalogue searches per requested measure. If two searches do not produce a credible candidate, stop searching and ask the user to choose from the closest candidates.
 Do not repeat a tool call with the same arguments. After a fetch returns zero rows or invalid filters, correct the filters from the inspected dimension codes; do not restart dataset search.
 The request may include a reusable structured result from the most recent chart. When it does, answer follow-up questions from those exact rows without calling search_eurostat, inspect_dimensions, or fetch_eurostat again. Fetch new data only when the user explicitly requests a different dataset, filters, geography, time range, or facts that are not present in the reusable rows.
@@ -898,15 +873,6 @@ The host application satisfies the skill's table requirement by rendering the fe
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model") or "openai/gpt-4.1-mini"
     context_result = payload.get("context_result")
-    clarification = clarification_question(str(payload.get("query") or ""), context_result)
-    if clarification:
-        return {
-            "answer": clarification,
-            "result": response_result(None, context_result),
-            "tool_calls": 0,
-            "tool_call_details": [],
-        }
-
     messages = build_messages(payload)
     last_fetch: dict[str, Any] | None = None
     fetch_records: list[dict[str, Any]] = []

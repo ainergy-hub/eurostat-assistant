@@ -534,8 +534,139 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response["tool_calls"], 0)
         self.assertEqual(response["result"], context_result)
 
+    @patch("app.sandbox_agent.call_tool")
     @patch("app.sandbox_agent.openrouter_chat")
-    def test_ambiguous_innovation_proxy_is_clarified_before_tools(self, chat_mock) -> None:
+    def test_ambiguous_measure_is_clarified_after_bounded_discovery(
+        self,
+        chat_mock,
+        tool_mock,
+    ) -> None:
+        search_output = json.dumps(
+            [
+                {
+                    "code": "pat_ep_tot",
+                    "title": "Patent applications to the EPO",
+                },
+                {
+                    "code": "rd_e_gerdtot",
+                    "title": "GERD by sectors of performance",
+                },
+            ]
+        )
+        dimensions_output = {
+            "pat_ep_tot": json.dumps(
+                {
+                    "dataset": "pat_ep_tot",
+                    "dimensions": [
+                        {
+                            "id": "unit",
+                            "size": 1,
+                            "sample_categories": [
+                                {
+                                    "code": "P_MHAB",
+                                    "label": "Per million inhabitants",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            "rd_e_gerdtot": json.dumps(
+                {
+                    "dataset": "rd_e_gerdtot",
+                    "dimensions": [
+                        {
+                            "id": "unit",
+                            "size": 1,
+                            "sample_categories": [
+                                {
+                                    "code": "PC_GDP",
+                                    "label": "Percentage of GDP",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+        }
+
+        def tool_output(name: str, raw_arguments: str) -> str:
+            arguments = json.loads(raw_arguments)
+            if name == "search_eurostat":
+                return search_output
+            if name == "inspect_dimensions":
+                return dimensions_output[arguments["dataset"]]
+            self.fail(f"Unexpected tool call during clarification discovery: {name}")
+
+        tool_mock.side_effect = tool_output
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "search-innovation",
+                                    "function": {
+                                        "name": "search_eurostat",
+                                        "arguments": json.dumps(
+                                            {"query": "innovation EU countries"}
+                                        ),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "inspect-patents",
+                                    "function": {
+                                        "name": "inspect_dimensions",
+                                        "arguments": json.dumps(
+                                            {"dataset": "pat_ep_tot"}
+                                        ),
+                                    },
+                                },
+                                {
+                                    "id": "inspect-rd",
+                                    "function": {
+                                        "name": "inspect_dimensions",
+                                        "arguments": json.dumps(
+                                            {"dataset": "rd_e_gerdtot"}
+                                        ),
+                                    },
+                                },
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": (
+                                "I found patent applications per million inhabitants "
+                                "(pat_ep_tot) and R&D expenditure as a percentage of GDP "
+                                "(rd_e_gerdtot). Patents are the closer per-capita output "
+                                "measure, so I recommend pat_ep_tot. Which should represent "
+                                "innovation?"
+                            ),
+                        }
+                    }
+                ]
+            },
+        ]
+
         response = run(
             {
                 "query": (
@@ -544,9 +675,94 @@ class StructuredResultTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(response["tool_calls"], 0)
-        self.assertIn("Which Eurostat measure", response["answer"])
-        chat_mock.assert_not_called()
+        self.assertEqual(response["tool_calls"], 3)
+        self.assertIsNone(response["result"])
+        self.assertIn("pat_ep_tot", response["answer"])
+        self.assertIn("rd_e_gerdtot", response["answer"])
+        self.assertIn("recommend", response["answer"])
+        called_tools = [detail["name"] for detail in response["tool_call_details"]]
+        self.assertEqual(
+            called_tools,
+            ["search_eurostat", "inspect_dimensions", "inspect_dimensions"],
+        )
+        self.assertNotIn("fetch_eurostat", called_tools)
+
+    @patch("app.sandbox_agent.call_tool")
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_clarification_choice_fetches_without_repeating_discovery(
+        self,
+        chat_mock,
+        tool_mock,
+    ) -> None:
+        tool_mock.return_value = json.dumps(self.fetch_record["output"])
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "fetch-patents",
+                                    "function": {
+                                        "name": "fetch_eurostat",
+                                        "arguments": json.dumps(
+                                            {
+                                                "dataset": "pat_ep_tot",
+                                                "params": [
+                                                    "unit=P_MHAB",
+                                                    "geo=DE,FR",
+                                                ],
+                                                "last_time_period": 1,
+                                            }
+                                        ),
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "I used patent applications per million inhabitants.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run(
+            {
+                "query": "Use patents per million inhabitants.",
+                "history": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Is GDP per capita correlated with innovation per capita across "
+                            "EU countries?"
+                        ),
+                    },
+                    {
+                        "role": "assistant",
+                        "content": (
+                            "I found pat_ep_tot and rd_e_gerdtot. Which should represent "
+                            "innovation?"
+                        ),
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(response["tool_calls"], 1)
+        self.assertEqual(
+            [detail["name"] for detail in response["tool_call_details"]],
+            ["fetch_eurostat"],
+        )
+        self.assertEqual(response["result"]["dataset"]["code"], "pat_ep_tot")
 
     @patch("app.sandbox_agent.call_tool", return_value="[]")
     @patch("app.sandbox_agent.openrouter_chat")

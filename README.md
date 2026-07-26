@@ -24,7 +24,7 @@ Eurostat Lens can:
 - render line charts, horizontal or vertical bar charts, and scatter plots;
 - pair two filtered measures by shared geography/period keys for correlation scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
-- stop ambiguous measure requests before lookup and bound repeated searches, inspections, and fetches;
+- perform bounded candidate discovery before asking about ambiguous measures and limit repeated searches, inspections, and fetches;
 - keep up to 30 separate investigations in local browser storage;
 - carry recent conversational context and a compact summary into follow-up questions;
 - reuse the most recent chart's validated rows for follow-ups without fetching the same API data again.
@@ -186,8 +186,9 @@ A successful chat result follows this public contract:
 }
 ```
 
-When the agent needs clarification or cannot fetch observations, `result` can be `null` while
-`answer` remains conversational.
+When the agent needs clarification, it can search and inspect candidate datasets without fetching
+observations. Its grounded question is returned in `answer`, while `result` remains `null`. A failed
+lookup can also return a conversational `answer` with no result.
 
 For correlation questions spanning two datasets, the agent joins observations on shared keys such
 as geography and period. The result uses `chart.type: "scatter"`, includes both numeric measures in
