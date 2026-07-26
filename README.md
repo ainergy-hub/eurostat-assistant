@@ -1,31 +1,81 @@
 # Eurostat Lens
 
-An open-source proof of concept for asking natural-language questions about official Eurostat data.
+Eurostat Lens is an open-source toolkit for answering natural-language questions with current,
+official Eurostat data. It contains two independently usable parts:
 
-The project combines a reusable Codex skill with a small FastAPI reference app. An agent searches
-Eurostat metadata, inspects dataset dimensions, fetches a bounded slice, and returns:
+- **`fetch-eurostat-data` Codex skill and CLI helper** for dataset discovery, dimension inspection,
+  and reproducible data retrieval.
+- **Eurostat Lens reference web app** for conversational investigations with sourced answers,
+  interactive charts, filterable tables, and CSV export.
 
-- a concise interpretation;
-- an interactive line, bar, or scatter plot;
-- a sortable, filterable table;
-- CSV export;
-- the dataset code, title, filters, update date, and reproducible API URL;
-- Eurostat observation flags and truncation warnings when present;
-- a live sidebar tool-call counter with per-call arguments, status, timing, and bounded result previews;
-- multiple device-local investigations with separate histories.
+The project is designed for focused questions that can be answered from a bounded slice of one
+Eurostat dataset. It is a reference implementation, not a replacement for Eurostat's full Data
+Browser or a general-purpose business intelligence platform.
 
-The web app is intentionally a reference interface rather than a replacement for Eurostat's full
-Data Browser.
+## Current scope
 
-## Repository
+Eurostat Lens can:
 
-- `SKILL.md`: reusable Eurostat agent instructions.
-- `scripts/eurostat_api.py`: standard-library Eurostat search, dimensions, and fetch helper.
+- search Eurostat's table-of-contents metadata for candidate datasets;
+- inspect dataset-specific dimensions, category codes, labels, and update dates;
+- fetch and flatten filtered JSON-stat 2.0 observations;
+- preserve the dataset code, title, applied filters, update date, flags, and reproducible API URL;
+- return up to 500 observations in a sortable, filterable table with CSV export;
+- render line charts, horizontal or vertical bar charts, and scatter plots;
+- stream tool-call status, arguments, duration, and bounded result previews to the app;
+- keep up to 30 separate investigations in local browser storage;
+- carry recent conversational context and a compact summary into follow-up questions.
+
+The current scope does not include:
+
+- arbitrary joins or calculations across multiple datasets;
+- maps, dashboards, or model-authored custom visualizations;
+- accounts, cloud synchronization, shared investigations, or versioned historical snapshots;
+- production controls such as authentication, rate limiting, caching, monitoring, or usage budgets.
+
+Eurostat publishes the latest version of each dataset through its public APIs. The data endpoints do
+not require an API key; the optional web app requires E2B and OpenRouter credentials to run its
+sandboxed agent.
+
+## Repository layout
+
+- `SKILL.md`: reusable Eurostat agent workflow and answering rules.
+- `scripts/eurostat_api.py`: standard-library search, dimensions, and fetch CLI.
+- `references/eurostat-api.md`: API patterns and troubleshooting notes.
+- `agents/openai.yaml`: Codex skill display metadata.
 - `app/sandbox_agent.py`: allow-listed tool-calling agent executed inside E2B.
-- `app/e2b_agent.py`: E2B lifecycle and result handling.
+- `app/e2b_agent.py`: E2B lifecycle, event streaming, and result handling.
 - `app/main.py`: FastAPI endpoints and validated public response models.
-- `static/`: dependency-free browser UI, table, chart, and CSV export.
-- `tests/`: JSON-stat parsing and structured-result contract tests.
+- `static/`: dependency-free browser UI, investigation state, charts, tables, and CSV export.
+- `tests/`: helper, response-contract, chart, Markdown, and browser-state tests.
+
+## Use the Codex skill
+
+The skill and CLI helper work without E2B, OpenRouter, or third-party Python packages.
+
+Install this repository as a personal Codex skill:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R . ~/.codex/skills/fetch-eurostat-data
+```
+
+Restart or reload Codex, then ask it to use `$fetch-eurostat-data`.
+
+You can also call the helper directly:
+
+```bash
+python3 scripts/eurostat_api.py search "population by age country"
+python3 scripts/eurostat_api.py dimensions demo_pjan
+python3 scripts/eurostat_api.py fetch demo_pjan \
+  --param geo=DE,FR \
+  --param sex=T \
+  --param age=TOTAL \
+  --last-time-period 5
+```
+
+`search` and `dimensions` emit JSON. `fetch` emits CSV by default and also supports
+`--output json`. Use `--max-rows` to change the default 500-observation output limit.
 
 ## Run the web app
 
@@ -33,15 +83,17 @@ Requirements:
 
 - Python 3.10 or newer;
 - [uv](https://docs.astral.sh/uv/);
-- an E2B API key;
-- an OpenRouter API key.
+- an [E2B](https://e2b.dev/) API key;
+- an [OpenRouter](https://openrouter.ai/) API key.
+
+Install dependencies and create the local environment file:
 
 ```bash
 uv sync
 cp .env.example .env
 ```
 
-Add your keys to `.env`:
+Add your credentials to `.env`:
 
 ```dotenv
 E2B_API_KEY=your_e2b_api_key
@@ -49,32 +101,42 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=openai/gpt-4.1-mini
 ```
 
+`OPENROUTER_MODEL` is optional and defaults to `openai/gpt-4.1-mini`.
+
 Start the app:
 
 ```bash
 ./run.sh
 ```
 
-Open `http://127.0.0.1:8000`.
+Open `http://127.0.0.1:8000`. Set `HOST` or `PORT` in the environment to override the defaults.
 
-## How a question is handled
+## How the app works
 
-1. The browser sends the question and recent conversation history to `POST /api/chat/stream`.
-2. The backend creates a short-lived E2B sandbox and copies in the skill, helper, and agent.
-3. The model may call search, inspect dimensions, bounded fetch, and a validated chart-choice tool.
-4. Each actual tool invocation is streamed to the sidebar as newline-delimited JSON.
-5. The final fetch is preserved as structured rows and provenance.
-6. The model may select a line, bar, or scatter plot; otherwise the host derives a sensible default.
-7. FastAPI validates the result before returning it to the browser.
-8. The browser generates the chart and table without executing model-authored HTML or JavaScript.
+1. The browser sends a question, up to six recent messages, and an extractive summary of older
+   messages to `POST /api/chat/stream`.
+2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
+3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
+   and chart selection.
+4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
+5. The host preserves the latest fetched slice as structured rows and provenance, validates any
+   model-selected chart fields, and derives a safe default chart when needed.
+6. FastAPI validates the public result before the browser renders it. The browser does not execute
+   model-authored HTML or JavaScript.
 
-Each investigation keeps its complete display history in browser storage. To keep model input costs
-bounded, the API receives only the six most recent messages plus an extractive summary of older
-turns. The summary is capped at 2,400 characters and retains dataset codes and applied filters where
-available. It does not trigger an additional model call, and the agent is instructed to verify
-statistical facts again through the Eurostat tools.
+Complete display history stays in browser storage. Only the six most recent messages and a summary
+of at most 2,400 characters are sent to the agent. The summary is generated locally without another
+model call and is treated as context rather than statistical evidence; the agent is instructed to
+verify facts through the Eurostat tools.
 
-Successful responses follow this shape:
+### HTTP endpoints
+
+- `GET /`: web interface.
+- `GET /api/health`: service and agent-credential readiness.
+- `POST /api/chat`: validated, non-streaming chat response.
+- `POST /api/chat/stream`: newline-delimited status, tool-call, result, and error events.
+
+A successful chat result follows this public contract:
 
 ```json
 {
@@ -99,62 +161,34 @@ Successful responses follow this shape:
       "orientation": null,
       "x": "time_label",
       "y": "value",
-      "series": "geo_label"
+      "series": "geo_label",
+      "title": "Population on 1 January by age and sex"
     },
     "warnings": []
-  }
+  },
+  "tool_calls": 4,
+  "tool_call_details": []
 }
 ```
 
-If the agent needs clarification or cannot fetch observations, `result` can be `null` and the
-answer remains conversational.
-
-## Use only the skill
-
-The app is optional. To install the reusable skill into Codex:
-
-```bash
-mkdir -p ~/.codex/skills
-cp -R . ~/.codex/skills/fetch-eurostat-data
-```
-
-After restarting or reloading Codex, ask it to use `$fetch-eurostat-data`.
-
-The helper can also be used directly:
-
-```bash
-python3 scripts/eurostat_api.py search "population by age country"
-python3 scripts/eurostat_api.py dimensions demo_pjan
-python3 scripts/eurostat_api.py fetch demo_pjan \
-  --param geo=DE,FR \
-  --param sex=T \
-  --param age=TOTAL \
-  --last-time-period 5
-```
+When the agent needs clarification or cannot fetch observations, `result` can be `null` while
+`answer` remains conversational.
 
 ## Tests
 
 ```bash
 uv run python -m unittest discover -v
 node --check static/app.js
+node --check static/chart.js
 node tests/chart.test.mjs
 node tests/chat_state.test.mjs
+node tests/markdown_renderer.test.mjs
 ```
 
-The test suite uses recorded JSON-stat-shaped fixtures and does not require API keys. A bounded live
-API request is useful as a separate canary because Eurostat always exposes the latest dataset
-version.
+The automated suite uses recorded JSON-stat-shaped fixtures and does not require API keys. A small,
+filtered live request is useful as a separate canary because Eurostat always exposes the latest
+dataset version.
 
-## POC boundaries
+## License
 
-- Each question currently creates a new E2B sandbox.
-- Investigation history is device-local and is not synchronized between browsers.
-- There are no accounts, saved analyses, or shareable result URLs.
-- The app supports line charts, horizontal and vertical bar charts, and scatter plots. The AI can
-  choose among them after fetching data; scatter choices are accepted only when both selected axes
-  are numeric. Category comparisons use horizontal bars by default so long labels remain readable,
-  and the renderer is isolated in `static/chart.js` for future chart types and presentation controls.
-- A production public deployment still needs rate limiting, caching, monitoring, and model-cost
-  controls.
-
-Eurostat's Statistics API and catalogue are public and do not require an API key.
+This project is available under the [MIT License](LICENSE).
