@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,6 +20,9 @@ if not SKILL.exists():
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MAX_TOOL_CHARS = 14000
 MAX_RESULT_ROWS = 500
+MAX_TOOL_ROUNDS = 20
+EVENT_PREFIX = "__EUROSTAT_EVENT__"
+MAX_EVENT_PREVIEW_CHARS = 700
 
 
 TOOLS = [
@@ -128,6 +132,51 @@ def tool_content_for_model(output: str) -> str:
     if len(output) <= MAX_TOOL_CHARS:
         return output
     return output[:MAX_TOOL_CHARS] + "\n\n[tool output truncated for the model]"
+
+
+def emit_event(event: dict[str, Any]) -> None:
+    if os.getenv("STREAM_TOOL_EVENTS") != "1":
+        return
+    print(f"{EVENT_PREFIX}{json.dumps(event, ensure_ascii=False)}", flush=True)
+
+
+def tool_output_preview(output: str) -> str:
+    compact = " ".join(output.split())
+    if len(compact) <= MAX_EVENT_PREVIEW_CHARS:
+        return compact
+    return f"{compact[: MAX_EVENT_PREVIEW_CHARS - 1].rstrip()}…"
+
+
+def text_content(value: Any) -> str:
+    """Normalize text-only content variants returned by OpenRouter providers."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return "".join(text_content(part) for part in value)
+    if not isinstance(value, dict):
+        return ""
+
+    part_type = str(value.get("type") or "").lower()
+    if part_type in {"reasoning", "thinking", "tool_call", "tool_use"}:
+        return ""
+    for key in ("text", "output_text", "content", "value"):
+        if key in value:
+            return text_content(value[key])
+    return ""
+
+
+def tool_arguments(value: Any) -> tuple[str, dict[str, Any]]:
+    """Return arguments in both provider-facing JSON and host-facing mapping forms."""
+    if isinstance(value, dict):
+        return json.dumps(value, ensure_ascii=False), value
+    raw = value if isinstance(value, str) else "{}"
+    try:
+        decoded = json.loads(raw or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return raw, {"raw": raw}
+    if isinstance(decoded, dict):
+        return raw, decoded
+    return raw, {"raw": raw}
 
 
 def _filters_from_arguments(arguments: dict[str, Any]) -> dict[str, list[str]]:
@@ -328,25 +377,51 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     model = payload.get("model") or "openai/gpt-4.1-mini"
     messages = build_messages(payload)
     last_fetch: dict[str, Any] | None = None
+    tool_call_count = 0
+    tool_call_details: list[dict[str, Any]] = []
 
-    for _ in range(8):
+    for _ in range(MAX_TOOL_ROUNDS):
         response = openrouter_chat(model, messages)
         message = response["choices"][0]["message"]
         tool_calls = message.get("tool_calls") or []
         if not tool_calls:
             return {
-                "answer": message.get("content", "").strip(),
+                "answer": text_content(message.get("content")).strip(),
                 "result": build_structured_result(last_fetch),
+                "tool_calls": tool_call_count,
+                "tool_call_details": tool_call_details,
             }
 
         messages.append(message)
         for tool_call in tool_calls:
+            tool_call_count += 1
             function = tool_call["function"]
-            raw_arguments = function.get("arguments", "{}")
+            raw_arguments, parsed_arguments = tool_arguments(function.get("arguments", "{}"))
+            function["arguments"] = raw_arguments
+
+            detail = {
+                "id": str(tool_call.get("id") or f"tool-call-{tool_call_count}"),
+                "index": tool_call_count,
+                "name": str(function.get("name") or "unknown_tool"),
+                "arguments": parsed_arguments,
+                "status": "running",
+                "duration_ms": None,
+                "result_preview": "",
+            }
+            emit_event({"type": "tool_call", "phase": "started", "call": detail})
+            started_at = time.perf_counter()
             tool_output = call_tool(function["name"], raw_arguments)
+            detail["duration_ms"] = max(0, round((time.perf_counter() - started_at) * 1000))
+            detail["status"] = (
+                "error"
+                if tool_output.startswith(("ERROR:", "Invalid JSON arguments:", "Unknown tool:"))
+                else "completed"
+            )
+            detail["result_preview"] = tool_output_preview(tool_output)
+            tool_call_details.append(detail)
+            emit_event({"type": "tool_call", "phase": "completed", "call": detail})
             if function["name"] == "fetch_eurostat" and not tool_output.startswith("ERROR:"):
                 try:
-                    parsed_arguments = json.loads(raw_arguments or "{}")
                     parsed_output = json.loads(tool_output)
                     last_fetch = {"arguments": parsed_arguments, "output": parsed_output}
                 except json.JSONDecodeError:
@@ -360,8 +435,13 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             )
 
     return {
-        "answer": "I could not complete the Eurostat lookup within the tool-call limit. Please narrow the question.",
+        "answer": (
+            f"I could not complete the Eurostat lookup within {MAX_TOOL_ROUNDS} "
+            "model/tool rounds. Please narrow the question."
+        ),
         "result": build_structured_result(last_fetch),
+        "tool_calls": tool_call_count,
+        "tool_call_details": tool_call_details,
     }
 
 

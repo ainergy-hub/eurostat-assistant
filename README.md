@@ -11,6 +11,7 @@ Eurostat metadata, inspects dataset dimensions, fetches a bounded slice, and ret
 - CSV export;
 - the dataset code, title, filters, update date, and reproducible API URL;
 - Eurostat observation flags and truncation warnings when present;
+- a live sidebar tool-call counter with per-call arguments, status, timing, and bounded result previews;
 - multiple device-local investigations with separate histories.
 
 The web app is intentionally a reference interface rather than a replacement for Eurostat's full
@@ -58,12 +59,13 @@ Open `http://127.0.0.1:8000`.
 
 ## How a question is handled
 
-1. The browser sends the question and recent conversation history to `POST /api/chat`.
+1. The browser sends the question and recent conversation history to `POST /api/chat/stream`.
 2. The backend creates a short-lived E2B sandbox and copies in the skill, helper, and agent.
 3. The model may call only three tools: search, inspect dimensions, and bounded fetch.
-4. The final fetch is preserved as structured rows and provenance.
-5. FastAPI validates the result before returning it to the browser.
-6. The browser generates the chart and table without executing model-authored HTML or JavaScript.
+4. Each actual tool invocation is streamed to the sidebar as newline-delimited JSON.
+5. The final fetch is preserved as structured rows and provenance.
+6. FastAPI validates the result before returning it to the browser.
+7. The browser generates the chart and table without executing model-authored HTML or JavaScript.
 
 Each investigation keeps its complete display history in browser storage. To keep model input costs
 bounded, the API receives only the six most recent messages plus an extractive summary of older

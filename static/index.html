@@ -8,6 +8,7 @@
       content="Ask questions of official Eurostat data and receive a sourced answer, chart, and table."
     />
     <title>Eurostat Lens — Ask official European data</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -16,7 +17,10 @@
         <div class="sidebar-header">
           <a class="brand" href="/" aria-label="Eurostat Lens home">
             <span class="brand-mark" aria-hidden="true"></span>
-            <span>Eurostat Lens</span>
+            <span class="brand-copy">
+              <span class="brand-eyebrow">EU data workspace</span>
+              <strong>Eurostat Lens</strong>
+            </span>
           </a>
           <button class="sidebar-close" id="sidebar-close" type="button" aria-label="Close chat list">
             ×
@@ -26,6 +30,14 @@
         <button class="new-chat-button" id="new-chat" type="button">
           <span>New investigation</span>
           <span aria-hidden="true">＋</span>
+        </button>
+
+        <button class="tool-activity" id="tool-activity" type="button" hidden>
+          <span class="tool-activity-copy">
+            <span class="tool-activity-label">Tool calls</span>
+            <span class="tool-activity-status" id="tool-activity-status">Starting agent</span>
+          </span>
+          <strong class="tool-activity-count" id="tool-activity-count" aria-live="polite">0</strong>
         </button>
 
         <div class="chat-nav-heading">
@@ -64,33 +76,36 @@
         </header>
 
         <section class="hero" id="hero">
-          <p class="eyebrow">Official European statistics, conversationally</p>
-          <h1>Ask Europe a<br />better question.</h1>
+          <p class="eyebrow">New investigation · Official Eurostat data</p>
+          <h1>What should we investigate?</h1>
           <p class="hero-copy">
-            Start a focused investigation. The agent finds the right Eurostat dataset,
-            checks its dimensions, and returns a sourced answer you can explore.
+            Ask a focused question. The agent will find the dataset, verify its dimensions,
+            and return a sourced answer with the observations behind it.
           </p>
-          <div class="suggestions" aria-label="Example questions">
+          <div class="suggestions" aria-label="Example investigations">
             <button
               class="suggestion"
               type="button"
               data-prompt="Compare the population of Germany, France, and Italy over the latest 5 years."
             >
-              Population across DE, FR &amp; IT
+              <span>Population across DE, FR &amp; IT</span>
+              <span aria-hidden="true">↗</span>
             </button>
             <button
               class="suggestion"
               type="button"
               data-prompt="How has annual inflation changed in the EU since 2020?"
             >
-              EU inflation since 2020
+              <span>EU inflation since 2020</span>
+              <span aria-hidden="true">↗</span>
             </button>
             <button
               class="suggestion"
               type="button"
               data-prompt="Compare the unemployment rate in Spain and Portugal over the latest 8 years."
             >
-              Spain vs Portugal employment
+              <span>Spain vs Portugal employment</span>
+              <span aria-hidden="true">↗</span>
             </button>
           </div>
         </section>
@@ -98,8 +113,12 @@
         <section class="conversation" id="chat" aria-live="polite"></section>
 
         <section class="ask-panel" aria-label="Ask Eurostat">
+          <div class="composer-heading">
+            <span>Investigation query</span>
+            <span>Enter to run · Shift + Enter for a new line</span>
+          </div>
           <form class="composer" id="composer">
-            <label class="sr-only" for="prompt">Ask a question about Eurostat data</label>
+            <label class="sr-only" for="prompt">Investigation query</label>
             <textarea
               id="prompt"
               name="prompt"
@@ -128,6 +147,20 @@
         </footer>
       </main>
     </div>
+
+    <dialog class="tool-call-dialog" id="tool-call-dialog" aria-labelledby="tool-call-dialog-title">
+      <div class="tool-call-dialog-header">
+        <div>
+          <span class="thread-label">Agent activity</span>
+          <h2 id="tool-call-dialog-title">Tool calls</h2>
+        </div>
+        <button class="dialog-close" id="tool-call-dialog-close" type="button" aria-label="Close tool-call details">
+          ×
+        </button>
+      </div>
+      <div class="tool-call-dialog-summary" id="tool-call-dialog-summary">No tool calls yet.</div>
+      <ol class="tool-call-details" id="tool-call-details"></ol>
+    </dialog>
 
     <template id="pending-template">
       <article class="response pending-response">

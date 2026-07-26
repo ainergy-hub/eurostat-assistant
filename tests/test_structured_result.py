@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import json
 import unittest
+from unittest.mock import patch
 
 from app.main import ChatRequest, ChatResponse
-from app.sandbox_agent import build_messages, build_structured_result
+from app.sandbox_agent import (
+    MAX_EVENT_PREVIEW_CHARS,
+    MAX_TOOL_ROUNDS,
+    build_messages,
+    build_structured_result,
+    run,
+    text_content,
+    tool_arguments,
+    tool_output_preview,
+)
 
 
 class StructuredResultTests(unittest.TestCase):
@@ -88,10 +99,15 @@ class StructuredResultTests(unittest.TestCase):
 
     def test_result_validates_against_public_api_contract(self) -> None:
         result = build_structured_result(self.fetch_record)
-        response = ChatResponse(answer="Population increased in both countries.", result=result)
+        response = ChatResponse(
+            answer="Population increased in both countries.",
+            result=result,
+            tool_calls=3,
+        )
 
         self.assertEqual(response.result.dataset.code, "demo_pjan")
         self.assertEqual(response.result.chart.type, "line")
+        self.assertEqual(response.tool_calls, 3)
 
     def test_missing_fetch_has_no_result(self) -> None:
         self.assertIsNone(build_structured_result(None))
@@ -137,6 +153,104 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertEqual(len(request.history), 6)
         self.assertEqual(request.summary, "Earlier investigation summary.")
+
+    @patch("app.sandbox_agent.call_tool", return_value="[]")
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_agent_reports_each_individual_tool_call(self, chat_mock, tool_mock) -> None:
+        chat_mock.side_effect = [
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "function": {
+                                        "name": "search_eurostat",
+                                        "arguments": '{"query":"population"}',
+                                    },
+                                },
+                                {
+                                    "id": "call-2",
+                                    "function": {
+                                        "name": "inspect_dimensions",
+                                        "arguments": '{"dataset":"demo_pjan"}',
+                                    },
+                                },
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": "call-3",
+                                    "function": {
+                                        "name": "search_eurostat",
+                                        "arguments": '{"query":"population Germany"}',
+                                    },
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Germany's population increased.",
+                        }
+                    }
+                ]
+            },
+        ]
+
+        response = run({"query": "How did Germany's population change?"})
+
+        self.assertEqual(response["tool_calls"], 3)
+        self.assertEqual(len(response["tool_call_details"]), 3)
+        self.assertEqual(response["tool_call_details"][0]["name"], "search_eurostat")
+        self.assertEqual(response["tool_call_details"][0]["status"], "completed")
+        self.assertEqual(
+            response["tool_call_details"][1]["arguments"],
+            {"dataset": "demo_pjan"},
+        )
+        self.assertEqual(tool_mock.call_count, 3)
+
+    def test_agent_round_limit_is_twenty(self) -> None:
+        self.assertEqual(MAX_TOOL_ROUNDS, 20)
+
+    def test_tool_result_preview_respects_public_contract(self) -> None:
+        preview = tool_output_preview("x" * (MAX_EVENT_PREVIEW_CHARS + 20))
+
+        self.assertEqual(len(preview), MAX_EVENT_PREVIEW_CHARS)
+        self.assertTrue(preview.endswith("…"))
+
+    def test_provider_content_parts_are_normalized_without_reasoning(self) -> None:
+        content = [
+            {"type": "reasoning", "text": "private chain of thought"},
+            {"type": "text", "text": "## Finding\n\n"},
+            {"type": "output_text", "text": "Population **increased**."},
+        ]
+
+        self.assertEqual(text_content(content), "## Finding\n\nPopulation **increased**.")
+
+    def test_provider_tool_arguments_accept_objects_and_json_strings(self) -> None:
+        raw, parsed = tool_arguments({"dataset": "demo_pjan"})
+        self.assertEqual(json.loads(raw), {"dataset": "demo_pjan"})
+        self.assertEqual(parsed, {"dataset": "demo_pjan"})
+
+        raw, parsed = tool_arguments('{"query":"population"}')
+        self.assertEqual(raw, '{"query":"population"}')
+        self.assertEqual(parsed, {"query": "population"})
 
 
 if __name__ == "__main__":

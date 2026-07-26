@@ -1,7 +1,8 @@
 import { buildContextSummary, recentHistory, titleFromPrompt } from "./chat_state.js";
+import { renderMarkdown } from "./markdown.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const COLORS = ["#164f43", "#e46633", "#376b88", "#9a7041", "#725c8e", "#5d8978"];
+const COLORS = ["#ff4f00", "#25764c", "#545c78", "#a66b1f", "#7b557c", "#357a78"];
 const PAGE_SIZE = 12;
 const MAX_CHATS = 30;
 const STORAGE_KEY = "eurostat-lens-chats-v1";
@@ -23,9 +24,17 @@ const sidebar = document.querySelector("#sidebar");
 const sidebarBackdrop = document.querySelector("#sidebar-backdrop");
 const menuButton = document.querySelector("#menu-button");
 const sidebarClose = document.querySelector("#sidebar-close");
+const toolActivity = document.querySelector("#tool-activity");
+const toolActivityCount = document.querySelector("#tool-activity-count");
+const toolActivityStatus = document.querySelector("#tool-activity-status");
+const toolCallDialog = document.querySelector("#tool-call-dialog");
+const toolCallDialogClose = document.querySelector("#tool-call-dialog-close");
+const toolCallDialogSummary = document.querySelector("#tool-call-dialog-summary");
+const toolCallDetails = document.querySelector("#tool-call-details");
 
 let state = loadState();
 let inFlightChatId = null;
+let currentToolCalls = [];
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -38,6 +47,177 @@ function svgElement(tag, attributes = {}) {
   const node = document.createElementNS(SVG_NS, tag);
   Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
   return node;
+}
+
+function readableToolName(name) {
+  return String(name || "Unknown tool")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function toolDuration(detail) {
+  if (!Number.isInteger(detail?.duration_ms)) return "In progress";
+  if (detail.duration_ms < 1000) return `${detail.duration_ms} ms`;
+  return `${(detail.duration_ms / 1000).toFixed(2)} s`;
+}
+
+function renderToolCallDetails(details = currentToolCalls) {
+  toolCallDetails.replaceChildren();
+  const completed = details.filter((detail) => detail.status === "completed").length;
+  const failed = details.filter((detail) => detail.status === "error").length;
+  const running = details.filter((detail) => detail.status === "running").length;
+  const summary = [`${details.length} total`, `${completed} completed`];
+  if (running) summary.push(`${running} running`);
+  if (failed) summary.push(`${failed} failed`);
+  toolCallDialogSummary.textContent = details.length ? summary.join(" · ") : "No tool calls yet.";
+
+  for (const detail of details) {
+    const item = element("li", "tool-call-detail");
+    const heading = element("div", "tool-call-detail-heading");
+    heading.appendChild(
+      element("strong", "", `${detail.index}. ${readableToolName(detail.name)}`),
+    );
+    heading.appendChild(
+      element("span", `tool-call-state ${detail.status}`, detail.status),
+    );
+    item.appendChild(heading);
+
+    const meta = element("div", "tool-call-meta");
+    meta.append(
+      element("span", "", `ID ${detail.id}`),
+      element("span", "", toolDuration(detail)),
+    );
+    item.appendChild(meta);
+
+    const argumentsBlock = element("div");
+    argumentsBlock.appendChild(element("h3", "", "Arguments"));
+    const argumentsCode = element("pre");
+    argumentsCode.textContent = JSON.stringify(detail.arguments || {}, null, 2);
+    argumentsBlock.appendChild(argumentsCode);
+    item.appendChild(argumentsBlock);
+
+    if (detail.result_preview) {
+      const resultBlock = element("div");
+      resultBlock.appendChild(element("h3", "", "Result preview"));
+      resultBlock.appendChild(element("p", "tool-call-result", detail.result_preview));
+      item.appendChild(resultBlock);
+    }
+    toolCallDetails.appendChild(item);
+  }
+}
+
+function updateToolActivity(detail) {
+  const existingIndex = currentToolCalls.findIndex((item) => item.id === detail.id);
+  if (existingIndex >= 0) {
+    currentToolCalls[existingIndex] = { ...currentToolCalls[existingIndex], ...detail };
+  } else {
+    currentToolCalls.push(detail);
+  }
+  currentToolCalls.sort((left, right) => left.index - right.index);
+  const running = currentToolCalls.filter((item) => item.status === "running").length;
+  const failed = currentToolCalls.filter((item) => item.status === "error").length;
+  toolActivity.hidden = false;
+  toolActivityCount.textContent = String(currentToolCalls.length);
+  toolActivity.className = `tool-activity${running ? " running" : failed ? " error" : ""}`;
+  toolActivityStatus.textContent = running
+    ? `${running} running · Select for details`
+    : failed
+      ? `${failed} failed · Select for details`
+      : `${currentToolCalls.length} completed · Select for details`;
+  renderToolCallDetails();
+}
+
+function startToolActivity() {
+  currentToolCalls = [];
+  toolActivity.hidden = false;
+  toolActivity.className = "tool-activity running";
+  toolActivityCount.textContent = "0";
+  toolActivityStatus.textContent = "Starting agent";
+  renderToolCallDetails();
+}
+
+function finishToolActivity(details, total) {
+  if (Array.isArray(details) && details.length) currentToolCalls = details;
+  toolActivity.hidden = false;
+  toolActivity.className = "tool-activity";
+  toolActivityCount.textContent = String(
+    Number.isInteger(total) ? total : currentToolCalls.length,
+  );
+  const failed = currentToolCalls.filter((item) => item.status === "error").length;
+  if (failed) toolActivity.classList.add("error");
+  toolActivityStatus.textContent = failed
+    ? `${failed} failed · Select for details`
+    : `${currentToolCalls.length} completed · Select for details`;
+  renderToolCallDetails();
+}
+
+function failToolActivity() {
+  toolActivity.hidden = false;
+  toolActivity.className = "tool-activity error";
+  toolActivityStatus.textContent = "Agent request failed · Select for details";
+  renderToolCallDetails();
+}
+
+function syncToolActivity(record) {
+  if (inFlightChatId) return;
+  const latestWithDetails = [...record.messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.toolCallDetails?.length);
+  if (!latestWithDetails) {
+    currentToolCalls = [];
+    toolActivity.hidden = true;
+    renderToolCallDetails();
+    return;
+  }
+  finishToolActivity(latestWithDetails.toolCallDetails, latestWithDetails.toolCalls);
+}
+
+function openToolCallDialog(details = currentToolCalls) {
+  renderToolCallDetails(details);
+  toolCallDialog.showModal();
+}
+
+async function streamChat(payload, onEvent) {
+  const response = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "The agent request failed.");
+  }
+  if (!response.body) throw new Error("The browser could not read the live agent response.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      onEvent(event);
+      if (event.type === "error") throw new Error(event.message || "The agent request failed.");
+      if (event.type === "result") result = event.data;
+    }
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const event = JSON.parse(buffer);
+    onEvent(event);
+    if (event.type === "error") throw new Error(event.message || "The agent request failed.");
+    if (event.type === "result") result = event.data;
+  }
+  if (!result) throw new Error("The agent stream ended before returning an answer.");
+  return result;
 }
 
 function createId() {
@@ -187,53 +367,6 @@ function addQuestion(content) {
   return article;
 }
 
-function renderAnswer(container, markdown) {
-  function appendInline(target, text) {
-    const fragments = text.trim().split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-    for (const fragment of fragments) {
-      if (fragment.startsWith("`") && fragment.endsWith("`")) {
-        target.appendChild(element("code", "", fragment.slice(1, -1)));
-      } else if (fragment.startsWith("**") && fragment.endsWith("**")) {
-        target.appendChild(element("strong", "", fragment.slice(2, -2)));
-      } else {
-        target.appendChild(document.createTextNode(fragment));
-      }
-    }
-  }
-
-  const lines = markdown.split("\n").filter((line) => !line.trim().startsWith("|"));
-  let paragraphLines = [];
-  let list = null;
-  function flushParagraph() {
-    if (!paragraphLines.length) return;
-    const p = element("p");
-    appendInline(p, paragraphLines.join(" "));
-    container.appendChild(p);
-    paragraphLines = [];
-  }
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushParagraph();
-      list = null;
-    } else if (/^[-*]\s+/.test(trimmed)) {
-      flushParagraph();
-      if (!list) {
-        list = element("ul");
-        container.appendChild(list);
-      }
-      const item = element("li");
-      appendInline(item, trimmed.replace(/^[-*]\s+/, ""));
-      list.appendChild(item);
-    } else {
-      list = null;
-      paragraphLines.push(trimmed);
-    }
-  }
-  flushParagraph();
-}
-
 function addPending() {
   const pending = pendingTemplate.content.firstElementChild.cloneNode(true);
   chat.appendChild(pending);
@@ -250,7 +383,7 @@ function addPending() {
     stage += 1;
   }, 2600);
   pending.scrollIntoView({ behavior: "smooth", block: "center" });
-  return { pending, timer };
+  return { pending, timer, label };
 }
 
 function addError(message) {
@@ -432,9 +565,9 @@ function addText(svg, text, x, y, attributes = {}) {
   const node = svgElement("text", {
     x,
     y,
-    fill: "#65706b",
+    fill: "#6b6b65",
     "font-size": 11,
-    "font-family": "Inter, system-ui, sans-serif",
+    "font-family": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
     ...attributes,
   });
   node.textContent = text;
@@ -495,7 +628,7 @@ function createChartSection(result) {
         x2: width - margin.right,
         y1: y,
         y2: y,
-        stroke: "#dfdbd1",
+        stroke: "#e5e5e0",
         "stroke-width": 1,
       }),
     );
@@ -515,7 +648,7 @@ function createChartSection(result) {
       x2: width - margin.right,
       y1: margin.top + plotHeight,
       y2: margin.top + plotHeight,
-      stroke: "#8f958f",
+      stroke: "#a8a8a0",
     }),
   );
 
@@ -555,8 +688,8 @@ function createChartSection(result) {
           fill: "none",
           stroke: color,
           "stroke-width": 2.5,
-          "stroke-linecap": "round",
-          "stroke-linejoin": "round",
+          "stroke-linecap": "square",
+          "stroke-linejoin": "miter",
         }),
       );
       rows.forEach((row) => {
@@ -565,7 +698,7 @@ function createChartSection(result) {
           cy: yPoint(row[spec.y]),
           r: 4,
           fill: color,
-          stroke: "#fffdf8",
+          stroke: "#fbfbf6",
           "stroke-width": 2,
           tabindex: 0,
         });
@@ -591,7 +724,7 @@ function createChartSection(result) {
         y: Math.min(y, zero),
         width: barWidth,
         height: Math.max(1, Math.abs(zero - y)),
-        rx: 3,
+        rx: 0,
         fill: COLORS[index % COLORS.length],
         tabindex: 0,
       });
@@ -650,11 +783,29 @@ function createProvenance(result) {
   return section;
 }
 
-function addResponse(answerText, result, shouldScroll = true) {
+function toolCallLabel(toolCalls) {
+  if (!Number.isInteger(toolCalls) || toolCalls < 0) return "";
+  return `${toolCalls} tool ${toolCalls === 1 ? "call" : "calls"}`;
+}
+
+function addResponse(answerText, result, toolCalls, details = [], shouldScroll = true) {
   const response = element("article", "response");
-  response.appendChild(element("div", "response-kicker", "Eurostat agent"));
+  const kicker = element("div", "response-kicker");
+  kicker.appendChild(element("span", "", "Eurostat agent"));
+  const callLabel = toolCallLabel(toolCalls);
+  if (callLabel) {
+    if (details.length) {
+      const callButton = element("button", "tool-call-count", callLabel);
+      callButton.type = "button";
+      callButton.addEventListener("click", () => openToolCallDialog(details));
+      kicker.appendChild(callButton);
+    } else {
+      kicker.appendChild(element("span", "tool-call-count", callLabel));
+    }
+  }
+  response.appendChild(kicker);
   const answer = element("div", "answer");
-  renderAnswer(answer, answerText);
+  renderMarkdown(answer, answerText);
   response.appendChild(answer);
 
   if (result?.rows?.length) {
@@ -686,9 +837,16 @@ function renderWorkspace() {
     if (message.role === "user") {
       addQuestion(message.content);
     } else {
-      addResponse(message.content, message.result, false);
+      addResponse(
+        message.content,
+        message.result,
+        message.toolCalls,
+        message.toolCallDetails || [],
+        false,
+      );
     }
   }
+  syncToolActivity(record);
   renderChatList();
 }
 
@@ -729,26 +887,41 @@ composer.addEventListener("submit", async (event) => {
   renderChatList();
   promptInput.value = "";
   sendButton.disabled = true;
-  const { pending, timer } = addPending();
+  const { pending, timer, label } = addPending();
+  startToolActivity();
 
   try {
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history, summary }),
+    const data = await streamChat({ message, history, summary }, (streamEvent) => {
+      if (streamEvent.type !== "tool_call" || !streamEvent.call) return;
+      updateToolActivity(streamEvent.call);
+      if (streamEvent.phase === "started") {
+        label.textContent = `Running ${readableToolName(streamEvent.call.name)}`;
+      } else if (streamEvent.call.status === "error") {
+        label.textContent = `${readableToolName(streamEvent.call.name)} reported an error`;
+      } else {
+        label.textContent = `${readableToolName(streamEvent.call.name)} completed`;
+      }
     });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.detail || "The agent request failed.");
-    }
     pending.remove();
+    finishToolActivity(data.tool_call_details, data.tool_calls);
     const target = state.chats.find((item) => item.id === record.id);
     if (target) {
-      target.messages.push({ role: "assistant", content: data.answer, result: data.result });
+      target.messages.push({
+        role: "assistant",
+        content: data.answer,
+        result: data.result,
+        toolCalls: data.tool_calls,
+        toolCallDetails: data.tool_call_details,
+      });
       target.updatedAt = new Date().toISOString();
       const saved = saveState();
       if (state.activeChatId === target.id) {
-        addResponse(data.answer, data.result);
+        addResponse(
+          data.answer,
+          data.result,
+          data.tool_calls,
+          data.tool_call_details || [],
+        );
         const updatedSummary = buildContextSummary(target.messages);
         contextStatus.hidden = !updatedSummary;
         contextStatus.title = updatedSummary
@@ -762,6 +935,7 @@ composer.addEventListener("submit", async (event) => {
     }
   } catch (error) {
     pending.remove();
+    failToolActivity();
     if (state.activeChatId === record.id) addError(error.message);
   } finally {
     window.clearInterval(timer);
@@ -789,6 +963,11 @@ newChatButton.addEventListener("click", createChat);
 menuButton.addEventListener("click", openSidebar);
 sidebarClose.addEventListener("click", closeSidebar);
 sidebarBackdrop.addEventListener("click", closeSidebar);
+toolActivity.addEventListener("click", () => openToolCallDialog());
+toolCallDialogClose.addEventListener("click", () => toolCallDialog.close());
+toolCallDialog.addEventListener("click", (event) => {
+  if (event.target === toolCallDialog) toolCallDialog.close();
+});
 window.addEventListener("storage", (event) => {
   if (event.key !== STORAGE_KEY) return;
   state = loadState();
