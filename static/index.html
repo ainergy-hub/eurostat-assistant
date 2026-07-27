@@ -10,17 +10,14 @@
     <title>Eurostat Lens — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-2" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
       <div class="lock-card">
         <span class="lock-mark" aria-hidden="true"></span>
-        <p class="eyebrow">Private workspace</p>
-        <h1 id="app-lock-title">Unlock Eurostat Lens</h1>
-        <p class="lock-copy">
-          Enter the app password to open your investigations and use the Eurostat agent.
-        </p>
+        <p class="eyebrow">Eurostat Lens</p>
+        <h1 id="app-lock-title">Welcome back</h1>
         <form class="lock-form" id="app-lock-form">
           <label for="app-lock-password">App password</label>
           <input
@@ -46,7 +43,6 @@
           <a class="brand" href="/" aria-label="Eurostat Lens home">
             <span class="brand-mark" aria-hidden="true"></span>
             <span class="brand-copy">
-              <span class="brand-eyebrow">EU data workspace</span>
               <strong>Eurostat Lens</strong>
             </span>
           </a>
@@ -56,7 +52,7 @@
         </div>
 
         <button class="new-chat-button" id="new-chat" type="button">
-          <span>New investigation</span>
+          <span>New chat</span>
           <span aria-hidden="true">＋</span>
         </button>
 
@@ -69,7 +65,7 @@
         </button>
 
         <div class="chat-nav-heading">
-          <span>Investigations</span>
+          <span>History</span>
           <span id="chat-count">0</span>
         </div>
         <nav class="chat-list" id="chat-list" aria-label="Saved chats"></nav>
@@ -77,7 +73,7 @@
         <div class="sidebar-foot">
           <span class="local-icon" aria-hidden="true">◌</span>
           <p>
-            Chats stay on this device. Older turns are compacted before they are sent to the agent.
+            AI can make mistakes.
           </p>
         </div>
       </aside>
@@ -90,7 +86,6 @@
               ☰
             </button>
             <div>
-              <span class="thread-label">Current investigation</span>
               <strong class="thread-title" id="current-chat-title">New investigation</strong>
             </div>
           </div>
@@ -102,11 +97,11 @@
               title="Use dark mode"
               aria-label="Use dark mode"
             >
-              <span class="theme-toggle-label">Dark mode</span>
+              <span class="theme-toggle-label utility-label">Dark mode</span>
               <span class="theme-toggle-icon" aria-hidden="true">◐</span>
             </button>
             <button class="lock-app-button" id="lock-app" type="button" hidden>
-              <span>Lock app</span>
+              <span class="utility-label">Lock app</span>
               <span aria-hidden="true">⌁</span>
             </button>
             <button
@@ -115,7 +110,7 @@
               type="button"
               title="Download the current investigation as a JSON log"
             >
-              <span>Download log</span>
+              <span class="utility-label">Download log</span>
               <span aria-hidden="true">↓</span>
             </button>
             <span class="context-status" id="context-status" hidden>Older context compacted</span>
@@ -127,19 +122,14 @@
         </header>
 
         <section class="hero" id="hero">
-          <p class="eyebrow">New investigation · Official Eurostat data</p>
-          <h1>What should we investigate?</h1>
-          <p class="hero-copy">
-            Ask a focused question. The agent will find the dataset, verify its dimensions,
-            and return a sourced answer with the observations behind it.
-          </p>
+          <h1>Explore European data.</h1>
           <div class="suggestions" aria-label="Example investigations">
             <button
               class="suggestion"
               type="button"
               data-prompt="Compare the population of Germany, France, and Italy over the latest 5 years."
             >
-              <span>Population across DE, FR &amp; IT</span>
+              <span>Population trends</span>
               <span aria-hidden="true">↗</span>
             </button>
             <button
@@ -147,7 +137,7 @@
               type="button"
               data-prompt="How has annual inflation changed in the EU since 2020?"
             >
-              <span>EU inflation since 2020</span>
+              <span>EU inflation</span>
               <span aria-hidden="true">↗</span>
             </button>
             <button
@@ -155,7 +145,7 @@
               type="button"
               data-prompt="Compare the unemployment rate in Spain and Portugal over the latest 8 years."
             >
-              <span>Spain vs Portugal employment</span>
+              <span>Iberian unemployment</span>
               <span aria-hidden="true">↗</span>
             </button>
           </div>
@@ -164,36 +154,27 @@
         <section class="conversation" id="chat" aria-live="polite"></section>
 
         <section class="ask-panel" aria-label="Ask Eurostat">
-          <div class="composer-heading">
-            <span>Investigation query</span>
-            <span>Enter to run · Shift + Enter for a new line</span>
-          </div>
           <form class="composer" id="composer">
             <label class="sr-only" for="prompt">Investigation query</label>
             <textarea
               id="prompt"
               name="prompt"
-              rows="2"
+              rows="1"
               maxlength="4000"
-              placeholder="Ask a follow-up or investigate a new angle..."
+              placeholder="Ask about population, inflation, jobs…"
               autocomplete="off"
               required
             ></textarea>
             <button class="send-button" type="submit" id="send">
-              <span>Ask Eurostat</span>
+              <span>Ask</span>
               <span aria-hidden="true">↗</span>
             </button>
           </form>
-          <div class="composer-meta">
-            <span>Recent turns + compact summary sent to the agent</span>
-            <span>Dataset, filters, and flags included</span>
-          </div>
         </section>
 
         <footer>
-          <span>Open-source proof of concept</span>
           <a href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
-            Data from Eurostat ↗
+            Eurostat source ↗
           </a>
         </footer>
       </main>
@@ -226,6 +207,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js" type="module"></script>
+    <script src="/static/app.js?v=20260727-2" type="module"></script>
   </body>
 </html>

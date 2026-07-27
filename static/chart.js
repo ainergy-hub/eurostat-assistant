@@ -810,7 +810,6 @@ export function createChartSection(result) {
   const interactionHint = hasInteractiveLegend(spec, rows)
     ? "Click legend items to highlight series; hover or focus a mark for details"
     : "Hover or focus a mark to inspect an observation";
-  copy.appendChild(element("p", "", interactionHint));
   heading.appendChild(copy);
   section.appendChild(heading);
 
@@ -821,6 +820,7 @@ export function createChartSection(result) {
   const view = element("div", "chart-view");
   view.setAttribute("role", "img");
   view.setAttribute("aria-label", spec.title || "Eurostat data chart");
+  view.title = interactionHint;
   wrap.appendChild(view);
   section.appendChild(wrap);
   void renderVegaLiteChart(view, rows, spec);

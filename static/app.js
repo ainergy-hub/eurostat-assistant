@@ -5,7 +5,7 @@ import {
   recentHistory,
   titleFromPrompt,
 } from "./chat_state.js";
-import { createChartSection, finalizeChartViews } from "./chart.js";
+import { createChartSection, finalizeChartViews } from "./chart.js?v=20260727-2";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;
@@ -514,15 +514,17 @@ function compareValues(a, b) {
 }
 
 function createTableSection(result) {
-  const section = element("section", "result-section");
-  const heading = element("div", "section-heading");
-  const headingCopy = element("div");
-  headingCopy.appendChild(element("h2", "", "Observations"));
-  headingCopy.appendChild(
-    element("p", "", `${result.rows.length} rows returned by the bounded query`),
+  const section = element("details", "result-section result-details");
+  const summary = element("summary", "result-summary");
+  summary.append(
+    element("span", "", "Data"),
+    element(
+      "span",
+      "result-summary-meta",
+      `${result.rows.length} row${result.rows.length === 1 ? "" : "s"}`,
+    ),
   );
-  heading.appendChild(headingCopy);
-  section.appendChild(heading);
+  section.appendChild(summary);
 
   const tools = element("div", "table-tools");
   const search = element("input", "table-search");
@@ -658,9 +660,18 @@ function downloadCsv(result, columns) {
 }
 
 function createProvenance(result) {
-  const section = element("section", "provenance");
+  const section = element("details", "provenance result-details");
   const sources = result.sources?.length ? result.sources : [result.dataset || {}];
-  section.appendChild(element("h2", "", sources.length > 1 ? "Sources" : "Source"));
+  const summary = element("summary", "result-summary");
+  summary.append(
+    element("span", "", sources.length > 1 ? "Sources" : "Source"),
+    element(
+      "span",
+      "result-summary-meta",
+      `${sources.length} dataset${sources.length === 1 ? "" : "s"}`,
+    ),
+  );
+  section.appendChild(summary);
   const grid = element("div", "source-grid");
 
   function sourceItem(label, valueNode) {
