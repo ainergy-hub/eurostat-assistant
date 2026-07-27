@@ -1,5 +1,6 @@
 const VEGA_LITE_SCHEMA = "https://vega.github.io/schema/vega-lite/v6.json";
 const NUMBER_FORMAT = ",.1~f";
+const LEGEND_SELECTION = "legend_series_selection";
 
 const BASE_LAYOUT = Object.freeze({
   width: 920,
@@ -177,6 +178,10 @@ function quantitativeScale(spec, defaultZero = false) {
   return { type: "linear", zero, nice: true };
 }
 
+function hasInteractiveLegend(spec, rows) {
+  return Boolean(spec.series && uniqueValues(rows, spec.series).length > 1);
+}
+
 function colorEncoding(spec, rows, theme) {
   if (!spec.series || !rows.some((row) => row[spec.series] !== undefined)) {
     return { value: theme.series[0] };
@@ -195,6 +200,46 @@ function colorEncoding(spec, rows, theme) {
             symbolType: spec.type === "line" ? "stroke" : "circle",
           }
         : null,
+  };
+}
+
+function addInteractiveLegend(chart, spec, rows) {
+  if (!hasInteractiveLegend(spec, rows)) return chart;
+
+  const dimEncoding = (unit) => {
+    if (!unit.encoding) return unit;
+    const markOpacity =
+      typeof unit.mark === "object" && Number.isFinite(unit.mark.opacity)
+        ? unit.mark.opacity
+        : 1;
+    return {
+      ...unit,
+      encoding: {
+        ...unit.encoding,
+        opacity: {
+          condition: { param: LEGEND_SELECTION, value: markOpacity },
+          value: 0.14,
+        },
+      },
+    };
+  };
+  const interactiveChart = chart.layer
+    ? { ...chart, layer: chart.layer.map(dimEncoding) }
+    : dimEncoding(chart);
+  return {
+    ...interactiveChart,
+    params: [
+      ...(interactiveChart.params || []),
+      {
+        name: LEGEND_SELECTION,
+        select: {
+          type: "point",
+          fields: [spec.series],
+          toggle: "true",
+        },
+        bind: "legend",
+      },
+    ],
   };
 }
 
@@ -682,7 +727,11 @@ export function buildVegaLiteSpec(rows, chartSpec, theme = FALLBACK_THEME) {
     chartRows = sortComparisonRows(chartRows, spec);
     if (spec.sort === "ascending") chartRows.reverse();
   }
-  const chart = renderers[spec.type](chartRows, spec, theme);
+  const chart = addInteractiveLegend(
+    renderers[spec.type](chartRows, spec, theme),
+    spec,
+    chartRows,
+  );
 
   return {
     $schema: VEGA_LITE_SCHEMA,
@@ -758,7 +807,10 @@ export function createChartSection(result) {
     change: "Change",
   }[spec.purpose] || "Chart";
   copy.appendChild(element("h2", "", sectionTitle));
-  copy.appendChild(element("p", "", "Hover or focus a mark to inspect an observation"));
+  const interactionHint = hasInteractiveLegend(spec, rows)
+    ? "Click legend items to highlight series; hover or focus a mark for details"
+    : "Hover or focus a mark to inspect an observation";
+  copy.appendChild(element("p", "", interactionHint));
   heading.appendChild(copy);
   section.appendChild(heading);
 

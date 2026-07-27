@@ -25,6 +25,7 @@ Eurostat Lens can:
   heatmap, histogram, and box-plot charts;
 - safely modify charts with sorting, top-N filtering, orientation, labels, linear
   trendlines, zero-baseline control, and linear or logarithmic scales;
+- click multi-series legend items to highlight one or more series and dim the rest;
 - pair two filtered measures by shared geography/period keys for correlation scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
 - perform bounded candidate discovery before asking about ambiguous measures and limit repeated searches, inspections, and fetches;

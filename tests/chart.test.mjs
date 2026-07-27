@@ -88,6 +88,50 @@ test("line charts translate the public chart contract into Vega-Lite", () => {
   assert.equal(spec.encoding.y.scale.zero, false);
   assert.equal(spec.encoding.color.field, "geo_label");
   assert.equal(spec.data.values[0].value, 12.5);
+  assert.equal(spec.params, undefined);
+});
+
+test("multi-series legends toggle series highlighting", () => {
+  const spec = buildVegaLiteSpec(
+    [
+      { time_label: "2024", value: 12.5, geo_label: "France" },
+      { time_label: "2024", value: 14.2, geo_label: "Germany" },
+    ],
+    {
+      type: "line",
+      x: "time_label",
+      y: "value",
+      series: "geo_label",
+    },
+  );
+
+  assert.equal(spec.params.length, 1);
+  assert.equal(spec.params[0].bind, "legend");
+  assert.deepEqual(spec.params[0].select.fields, ["geo_label"]);
+  assert.equal(spec.params[0].select.toggle, "true");
+  assert.equal(spec.encoding.opacity.condition.param, "legend_series_selection");
+  assert.equal(spec.encoding.opacity.condition.value, 1);
+  assert.equal(spec.encoding.opacity.value, 0.14);
+});
+
+test("legend highlighting preserves the selected mark opacity", () => {
+  const spec = buildVegaLiteSpec(
+    [
+      { period: "2024", source: "Wind", value: 40 },
+      { period: "2024", source: "Solar", value: 60 },
+    ],
+    {
+      type: "area",
+      x: "period",
+      y: "value",
+      series: "source",
+      stack: "stacked",
+    },
+  );
+
+  assert.equal(spec.params[0].bind, "legend");
+  assert.equal(spec.encoding.opacity.condition.value, 0.72);
+  assert.equal(spec.encoding.opacity.value, 0.14);
 });
 
 test("horizontal bars swap the categorical and quantitative axes", () => {
