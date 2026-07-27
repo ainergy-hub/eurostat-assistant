@@ -5,7 +5,7 @@ import {
   recentHistory,
   titleFromPrompt,
 } from "./chat_state.js";
-import { createChartSection, finalizeChartViews } from "./chart.js?v=20260727-2";
+import { createChartSection, finalizeChartViews } from "./chart.js?v=20260727-3";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;
@@ -57,7 +57,7 @@ function syncThemeToggle() {
   const isDark = document.documentElement.dataset.theme === themeApi.DARK;
   const nextTheme = isDark ? "light" : "dark";
   themeToggleButton.querySelector(".theme-toggle-label").textContent = `${nextTheme[0].toUpperCase()}${nextTheme.slice(1)} mode`;
-  themeToggleButton.querySelector(".theme-toggle-icon").textContent = isDark ? "☀" : "◐";
+  themeToggleButton.dataset.nextTheme = nextTheme;
   themeToggleButton.setAttribute("aria-label", `Use ${nextTheme} mode`);
   themeToggleButton.title = `Use ${nextTheme} mode`;
 }
