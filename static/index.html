@@ -10,7 +10,7 @@
     <title>Eurostat Lens — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-4" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-5" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -202,6 +202,26 @@
       </main>
     </div>
 
+    <div
+      class="notification"
+      id="notification"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      hidden
+    >
+      <span class="notification-mark" aria-hidden="true">i</span>
+      <span id="notification-message"></span>
+      <button
+        class="notification-dismiss"
+        id="notification-dismiss"
+        type="button"
+        aria-label="Dismiss notification"
+      >
+        ×
+      </button>
+    </div>
+
     <dialog class="tool-call-dialog" id="tool-call-dialog" aria-labelledby="tool-call-dialog-title">
       <div class="tool-call-dialog-header">
         <div>
@@ -229,6 +249,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260727-3" type="module"></script>
+    <script src="/static/app.js?v=20260727-6" type="module"></script>
   </body>
 </html>

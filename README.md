@@ -29,7 +29,7 @@ Eurostat Lens can:
 - pair two filtered measures by shared geography/period keys for correlation scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
 - perform bounded candidate discovery before asking about ambiguous measures and limit repeated searches, inspections, and fetches;
-- keep up to 30 separate investigations in local browser storage;
+- keep device-native investigation history in IndexedDB without a fixed chat-count limit;
 - carry recent conversational context and a compact summary into follow-up questions;
 - reuse the most recent chart's validated rows for follow-ups without fetching the same API data again.
 
@@ -164,8 +164,14 @@ The browser translates the validated `chart` contract into a bounded Vega-Lite s
 renders it as SVG with Vega-Embed. Vega 6.2.0, Vega-Lite 6.4.3, and Vega-Embed 7.1.0 are loaded from
 the jsDelivr CDN; the model never supplies arbitrary Vega-Lite specifications.
 
-Complete display history stays in browser storage. The agent receives the six most recent messages,
-a summary of at most 2,400 characters, and (when available) the latest chart's validated result.
+Complete display history stays on the device in the browser's IndexedDB storage. Investigation
+metadata, messages, and diagnostic events are stored separately, so the app loads the lightweight
+history list plus the active investigation instead of rewriting or loading every saved response.
+Existing `eurostat-lens-chats-v1` local-storage history is migrated automatically on first launch.
+History remains specific to the current browser profile and site origin; clearing site data removes
+it, and the browser's normal storage quota still applies. The agent receives the six most recent
+messages, a summary of at most 2,400 characters, and (when available) the latest chart's validated
+result.
 The structured result is treated as reusable Eurostat tool output, so follow-ups that are answerable
 from those rows do not repeat dataset search, dimension inspection, or the data fetch. A different
 dataset, filter, geography, time range, or unavailable fact still triggers a new lookup.
@@ -254,9 +260,11 @@ Vega-Lite, HTML, or JavaScript.
 ```bash
 uv run python -m unittest discover -v
 node --check static/app.js
+node --check static/chat_store.js
 node --check static/chart.js
 node tests/chart.test.mjs
 node tests/chat_state.test.mjs
+node tests/chat_store.test.mjs
 node tests/markdown_renderer.test.mjs
 ```
 

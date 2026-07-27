@@ -5,12 +5,23 @@ import {
   recentHistory,
   titleFromPrompt,
 } from "./chat_state.js";
+import {
+  ChatHistoryStore,
+  requestPersistentStorage,
+} from "./chat_store.js";
+import {
+  advancePendingStage,
+  completeInFlightState,
+  createInFlightState,
+  failInFlightState,
+  hasPendingForChat,
+  setInFlightLabel,
+  updateInFlightToolCall,
+} from "./in_flight_state.js";
 import { createChartSection, finalizeChartViews } from "./chart.js?v=20260727-3";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;
-const MAX_CHATS = 30;
-const STORAGE_KEY = "eurostat-lens-chats-v1";
 const APP_VERSION = "0.3.0";
 
 const appLayout = document.querySelector("#app-layout");
@@ -46,12 +57,19 @@ const toolCallDialogSummary = document.querySelector("#tool-call-dialog-summary"
 const toolCallDetails = document.querySelector("#tool-call-details");
 const downloadChatLogButton = document.querySelector("#download-chat-log");
 const themeToggleButton = document.querySelector("#theme-toggle");
+const notification = document.querySelector("#notification");
+const notificationMessage = document.querySelector("#notification-message");
+const notificationDismiss = document.querySelector("#notification-dismiss");
 const themeApi = globalThis.EurostatTheme;
 
-let state = loadState();
+let state = { chats: [], activeChatId: null };
+let historyStore = null;
+let historyNotice = "";
 let inFlightChatId = null;
+let inFlightState = null;
 let currentToolCalls = [];
 let lockEnabled = false;
+let notificationTimer = null;
 
 function syncThemeToggle() {
   const isDark = document.documentElement.dataset.theme === themeApi.DARK;
@@ -165,13 +183,9 @@ function renderToolCallDetails(details = currentToolCalls) {
 }
 
 function updateToolActivity(detail) {
-  const existingIndex = currentToolCalls.findIndex((item) => item.id === detail.id);
-  if (existingIndex >= 0) {
-    currentToolCalls[existingIndex] = { ...currentToolCalls[existingIndex], ...detail };
-  } else {
-    currentToolCalls.push(detail);
-  }
-  currentToolCalls.sort((left, right) => left.index - right.index);
+  const calls = updateInFlightToolCall(inFlightState, detail);
+  if (state.activeChatId !== inFlightChatId) return;
+  currentToolCalls = calls;
   const running = currentToolCalls.filter((item) => item.status === "running").length;
   const failed = currentToolCalls.filter((item) => item.status === "error").length;
   toolActivity.hidden = false;
@@ -187,6 +201,8 @@ function updateToolActivity(detail) {
 
 function startToolActivity() {
   currentToolCalls = [];
+  if (inFlightState) inFlightState.toolCalls = currentToolCalls;
+  if (state.activeChatId !== inFlightChatId) return;
   toolActivity.hidden = false;
   toolActivity.className = "tool-activity running";
   toolActivityCount.textContent = "0";
@@ -195,7 +211,9 @@ function startToolActivity() {
 }
 
 function finishToolActivity(details, total) {
-  if (Array.isArray(details) && details.length) currentToolCalls = details;
+  completeInFlightState(inFlightState, details, total);
+  if (state.activeChatId !== inFlightChatId) return;
+  currentToolCalls = inFlightState?.toolCalls || currentToolCalls;
   toolActivity.hidden = false;
   toolActivity.className = "tool-activity";
   toolActivityCount.textContent = String(
@@ -210,6 +228,8 @@ function finishToolActivity(details, total) {
 }
 
 function failToolActivity() {
+  failInFlightState(inFlightState);
+  if (state.activeChatId !== inFlightChatId) return;
   toolActivity.hidden = false;
   toolActivity.className = "tool-activity error";
   toolActivityStatus.textContent = "Agent request failed · Select for details";
@@ -217,7 +237,45 @@ function failToolActivity() {
 }
 
 function syncToolActivity(record) {
-  if (inFlightChatId) return;
+  if (record.id === inFlightChatId && inFlightState) {
+    currentToolCalls = inFlightState.toolCalls;
+    if (inFlightState.phase === "error") {
+      toolActivity.hidden = false;
+      toolActivity.className = "tool-activity error";
+      toolActivityCount.textContent = String(currentToolCalls.length);
+      toolActivityStatus.textContent = "Agent request failed · Select for details";
+      renderToolCallDetails();
+      return;
+    }
+    if (inFlightState.phase === "completed") {
+      toolActivity.hidden = false;
+      toolActivity.className = "tool-activity";
+      toolActivityCount.textContent = String(
+        inFlightState.toolCallTotal ?? currentToolCalls.length,
+      );
+      const failed = currentToolCalls.filter((item) => item.status === "error").length;
+      if (failed) toolActivity.classList.add("error");
+      toolActivityStatus.textContent = failed
+        ? `${failed} failed · Select for details`
+        : `${currentToolCalls.length} completed · Select for details`;
+      renderToolCallDetails();
+      return;
+    }
+
+    const running = currentToolCalls.filter((item) => item.status === "running").length;
+    const failed = currentToolCalls.filter((item) => item.status === "error").length;
+    toolActivity.hidden = false;
+    toolActivity.className = `tool-activity running${failed ? " error" : ""}`;
+    toolActivityCount.textContent = String(currentToolCalls.length);
+    toolActivityStatus.textContent = running
+      ? `${running} running · Select for details`
+      : currentToolCalls.length
+        ? "Agent is preparing the answer · Select for details"
+        : "Starting agent";
+    renderToolCallDetails();
+    return;
+  }
+
   const latestWithDetails = [...record.messages]
     .reverse()
     .find((message) => message.role === "assistant" && message.toolCallDetails?.length);
@@ -293,39 +351,81 @@ function newChatRecord() {
     title: "New investigation",
     createdAt: now,
     updatedAt: now,
+    messageCount: 0,
+    turnCount: 0,
+    eventCount: 0,
     messages: [],
     events: [],
+    loaded: true,
   };
 }
 
-function loadState() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (stored?.chats?.length) {
-      const chats = stored.chats
-        .filter((item) => item && typeof item.id === "string" && Array.isArray(item.messages))
-        .map((item) => ({
-          ...item,
-          events: Array.isArray(item.events) ? item.events : [],
-        }))
-        .slice(0, MAX_CHATS);
-      const activeChatId = chats.some((item) => item.id === stored.activeChatId)
-        ? stored.activeChatId
-        : chats[0]?.id;
-      if (chats.length && activeChatId) return { chats, activeChatId };
-    }
-  } catch {
-    // A malformed browser cache should never prevent the app from starting.
-  }
-  const firstChat = newChatRecord();
-  return { chats: [firstChat], activeChatId: firstChat.id };
+function applyMetadata(record, metadata) {
+  if (!record || !metadata) return;
+  record.title = metadata.title;
+  record.createdAt = metadata.createdAt;
+  record.updatedAt = metadata.updatedAt;
+  record.messageCount = metadata.messageCount;
+  record.turnCount = metadata.turnCount;
+  record.eventCount = metadata.eventCount;
 }
 
-function saveState() {
+function unloadedRecord(record) {
+  return {
+    ...record,
+    messages: [],
+    events: [],
+    loaded: false,
+  };
+}
+
+async function initializeHistory() {
+  const fallbackChat = newChatRecord();
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    historyStore = new ChatHistoryStore();
+    const initialState = await historyStore.initialize(fallbackChat);
+    state = {
+      chats: initialState.chats,
+      activeChatId: initialState.activeChatId,
+    };
+    if (initialState.migratedCount) {
+      const count = initialState.migratedCount;
+      historyNotice = `Moved ${count} saved investigation${count === 1 ? "" : "s"} into scalable device storage.`;
+    }
+    void requestPersistentStorage();
+  } catch {
+    historyStore = null;
+    state = { chats: [fallbackChat], activeChatId: fallbackChat.id };
+    historyNotice =
+      "Device history is unavailable in this browser. New investigations will last only until this page is closed.";
+  }
+}
+
+async function persistMessage(record, message) {
+  if (!historyStore) return false;
+  try {
+    const metadata = await historyStore.appendMessage(record.id, message, {
+      title: record.title,
+      updatedAt: record.updatedAt,
+    });
+    applyMetadata(record, metadata);
     return true;
   } catch {
+    showNotification("This browser could not save the latest message to device history.");
+    return false;
+  }
+}
+
+async function persistEvent(record, event) {
+  if (!historyStore) return false;
+  try {
+    const metadata = await historyStore.appendEvent(record.id, event, {
+      updatedAt: record.updatedAt,
+    });
+    applyMetadata(record, metadata);
+    return true;
+  } catch {
+    showNotification("This browser could not save the latest diagnostic event.");
     return false;
   }
 }
@@ -351,6 +451,19 @@ function closeSidebar() {
   document.body.classList.remove("sidebar-open");
 }
 
+function hideNotification() {
+  window.clearTimeout(notificationTimer);
+  notificationTimer = null;
+  notification.hidden = true;
+}
+
+function showNotification(message) {
+  window.clearTimeout(notificationTimer);
+  notificationMessage.textContent = message;
+  notification.hidden = false;
+  notificationTimer = window.setTimeout(hideNotification, 6000);
+}
+
 function renderChatList() {
   chatList.replaceChildren();
   const sorted = [...state.chats].sort(
@@ -364,7 +477,9 @@ function renderChatList() {
     select.type = "button";
     select.setAttribute("aria-current", record.id === state.activeChatId ? "page" : "false");
     const text = element("span", "chat-select-copy");
-    const turnCount = Math.ceil(record.messages.length / 2);
+    const turnCount = Number.isInteger(record.turnCount)
+      ? record.turnCount
+      : record.messages.filter((message) => message.role === "user").length;
     text.append(
       element("strong", "", record.title),
       element(
@@ -374,57 +489,126 @@ function renderChatList() {
       ),
     );
     select.appendChild(text);
-    select.addEventListener("click", () => selectChat(record.id));
+    select.addEventListener("click", () => {
+      void selectChat(record.id);
+    });
 
     const remove = element("button", "chat-delete", "×");
     remove.type = "button";
     remove.setAttribute("aria-label", `Delete ${record.title}`);
-    remove.addEventListener("click", () => deleteChat(record.id));
+    remove.addEventListener("click", () => {
+      void deleteChat(record.id);
+    });
     row.append(select, remove);
     chatList.appendChild(row);
   }
 }
 
-function selectChat(id) {
-  if (!state.chats.some((item) => item.id === id)) return;
-  state.activeChatId = id;
-  saveState();
-  renderWorkspace();
-  closeSidebar();
+async function selectChat(id) {
+  const record = state.chats.find((item) => item.id === id);
+  const previous = activeChat();
+  if (!record) return;
+  if (id === state.activeChatId) {
+    closeSidebar();
+    return;
+  }
+
+  try {
+    const loaded = record.loaded || !historyStore
+      ? record
+      : await historyStore.loadChat(id);
+    if (!loaded) throw new Error("The saved investigation could not be found.");
+    if (historyStore) await historyStore.setActiveChat(id);
+    const index = state.chats.findIndex((item) => item.id === id);
+    state.chats[index] = loaded;
+    if (historyStore && previous && previous.id !== inFlightChatId) {
+      const previousIndex = state.chats.findIndex((item) => item.id === previous.id);
+      if (previousIndex >= 0) state.chats[previousIndex] = unloadedRecord(previous);
+    }
+    state.activeChatId = id;
+    renderWorkspace();
+    closeSidebar();
+  } catch {
+    showNotification("This browser could not open that saved investigation.");
+  }
 }
 
-function createChat() {
+async function createChat() {
   const current = activeChat();
-  if (current && current.messages.length === 0) {
+  if (current && (current.messageCount ?? current.messages.length) === 0) {
     promptInput.focus();
     closeSidebar();
     return;
   }
-  if (state.chats.length >= MAX_CHATS) {
-    window.alert("This proof of concept keeps up to 30 investigations. Delete one before starting another.");
-    return;
-  }
+
   const record = newChatRecord();
+  try {
+    if (historyStore) await historyStore.createChat(record, true);
+  } catch {
+    showNotification(
+      "This browser could not add the investigation to device history. It will remain available until the page is closed.",
+    );
+  }
+  if (historyStore && current && current.id !== inFlightChatId) {
+    const currentIndex = state.chats.findIndex((item) => item.id === current.id);
+    if (currentIndex >= 0) state.chats[currentIndex] = unloadedRecord(current);
+  }
   state.chats.push(record);
   state.activeChatId = record.id;
-  saveState();
   renderWorkspace();
   closeSidebar();
   promptInput.focus();
 }
 
-function deleteChat(id) {
+async function deleteChat(id) {
   if (id === inFlightChatId) {
     window.alert("Wait for this investigation to finish before deleting it.");
     return;
   }
   const record = state.chats.find((item) => item.id === id);
   if (!record || !window.confirm(`Delete “${record.title}” from this device?`)) return;
+
+  try {
+    if (historyStore) await historyStore.deleteChat(id);
+  } catch {
+    showNotification("This browser could not delete that investigation.");
+    return;
+  }
+
   state.chats = state.chats.filter((item) => item.id !== id);
-  if (!state.chats.length) state.chats.push(newChatRecord());
-  if (state.activeChatId === id) state.activeChatId = state.chats[0].id;
-  saveState();
-  renderWorkspace();
+  if (!state.chats.length) {
+    const replacement = newChatRecord();
+    try {
+      if (historyStore) await historyStore.createChat(replacement, true);
+    } catch {
+      showNotification(
+        "Device history could not save the replacement investigation.",
+      );
+    }
+    state.chats.push(replacement);
+    state.activeChatId = replacement.id;
+    renderWorkspace();
+    return;
+  }
+
+  if (state.activeChatId !== id) {
+    renderChatList();
+    return;
+  }
+
+  const next = state.chats[0];
+  try {
+    const loaded = next.loaded || !historyStore
+      ? next
+      : await historyStore.loadChat(next.id);
+    if (!loaded) throw new Error("The next investigation could not be found.");
+    if (historyStore) await historyStore.setActiveChat(loaded.id);
+    state.chats[0] = loaded;
+    state.activeChatId = loaded.id;
+    renderWorkspace();
+  } catch {
+    showNotification("This browser could not open the next saved investigation.");
+  }
 }
 
 function filenamePart(value) {
@@ -463,23 +647,19 @@ function addQuestion(content) {
   return article;
 }
 
-function addPending() {
+function addPending(labelText) {
   const pending = pendingTemplate.content.firstElementChild.cloneNode(true);
   chat.appendChild(pending);
   const label = pending.querySelector(".progress-label");
-  const stages = [
-    "Inspecting dataset dimensions",
-    "Fetching a bounded data slice",
-    "Checking units and observation flags",
-    "Preparing the answer and visualisation",
-  ];
-  let stage = 0;
-  const timer = window.setInterval(() => {
-    label.textContent = stages[Math.min(stage, stages.length - 1)];
-    stage += 1;
-  }, 2600);
+  label.textContent = labelText || "Finding candidate datasets";
   pending.scrollIntoView({ behavior: "smooth", block: "center" });
-  return { pending, timer, label };
+  return pending;
+}
+
+function syncPendingLabel() {
+  if (!hasPendingForChat(inFlightState, state.activeChatId)) return;
+  const label = chat.querySelector(".pending-response .progress-label");
+  if (label) label.textContent = inFlightState.label;
 }
 
 function addError(message) {
@@ -801,6 +981,9 @@ function renderWorkspace() {
       );
     }
   }
+  if (hasPendingForChat(inFlightState, record.id)) {
+    addPending(inFlightState.label);
+  }
   syncToolActivity(record);
   renderChatList();
 }
@@ -844,6 +1027,10 @@ appLockForm.addEventListener("submit", async (event) => {
     lockEnabled = Boolean(data.lock_enabled);
     showApp();
     renderWorkspace();
+    if (historyNotice) {
+      showNotification(historyNotice);
+      historyNotice = "";
+    }
     await checkHealth();
   } catch (error) {
     showAppLock(error instanceof Error ? error.message : "The app could not be unlocked.");
@@ -872,14 +1059,18 @@ composer.addEventListener("submit", async (event) => {
   const contextResult = latestDataResult(priorMessages);
   if (!record.messages.length) record.title = titleFromPrompt(message);
   const requestStartedAt = new Date();
-  record.messages.push({
+  const userMessage = {
     role: "user",
     content: message,
     createdAt: requestStartedAt.toISOString(),
-  });
+  };
+  record.messages.push(userMessage);
   record.updatedAt = requestStartedAt.toISOString();
+  record.messageCount = record.messages.length;
+  record.turnCount = (record.turnCount || 0) + 1;
   inFlightChatId = record.id;
-  saveState();
+  inFlightState = createInFlightState(record.id);
+  await persistMessage(record, userMessage);
   hero.hidden = true;
   addQuestion(message);
   currentChatTitle.textContent = record.title;
@@ -887,7 +1078,11 @@ composer.addEventListener("submit", async (event) => {
   renderChatList();
   promptInput.value = "";
   sendButton.disabled = true;
-  const { pending, timer, label } = addPending();
+  addPending(inFlightState.label);
+  const timer = window.setInterval(() => {
+    advancePendingStage(inFlightState);
+    syncPendingLabel();
+  }, 2600);
   startToolActivity();
 
   try {
@@ -897,19 +1092,28 @@ composer.addEventListener("submit", async (event) => {
         if (streamEvent.type !== "tool_call" || !streamEvent.call) return;
         updateToolActivity(streamEvent.call);
         if (streamEvent.phase === "started") {
-          label.textContent = `Running ${readableToolName(streamEvent.call.name)}`;
+          setInFlightLabel(
+            inFlightState,
+            `Running ${readableToolName(streamEvent.call.name)}`,
+          );
         } else if (streamEvent.call.status === "error") {
-          label.textContent = `${readableToolName(streamEvent.call.name)} reported an error`;
+          setInFlightLabel(
+            inFlightState,
+            `${readableToolName(streamEvent.call.name)} reported an error`,
+          );
         } else {
-          label.textContent = `${readableToolName(streamEvent.call.name)} completed`;
+          setInFlightLabel(
+            inFlightState,
+            `${readableToolName(streamEvent.call.name)} completed`,
+          );
         }
+        syncPendingLabel();
       },
     );
-    pending.remove();
     finishToolActivity(data.tool_call_details, data.tool_calls);
     const target = state.chats.find((item) => item.id === record.id);
     if (target) {
-      target.messages.push({
+      const assistantMessage = {
         role: "assistant",
         content: data.answer,
         createdAt: new Date().toISOString(),
@@ -917,46 +1121,50 @@ composer.addEventListener("submit", async (event) => {
         result: data.result,
         toolCalls: data.tool_calls,
         toolCallDetails: data.tool_call_details,
-      });
+      };
+      target.messages.push(assistantMessage);
       target.updatedAt = new Date().toISOString();
-      const saved = saveState();
+      target.messageCount = target.messages.length;
+      const saved = await persistMessage(target, assistantMessage);
       if (state.activeChatId === target.id) {
-        addResponse(
-          data.answer,
-          data.result,
-          data.tool_calls,
-          data.tool_call_details || [],
-        );
-        const updatedSummary = buildContextSummary(target.messages);
-        contextStatus.hidden = !updatedSummary;
-        contextStatus.title = updatedSummary
-          ? "Older turns are represented by a bounded extractive summary to reduce model input."
-          : "";
-        if (!saved) {
+        renderWorkspace();
+        chat.lastElementChild?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (!saved && historyStore) {
           addError("The answer is available, but this browser could not persist the latest chat data.");
         }
       }
       renderChatList();
     }
   } catch (error) {
-    pending.remove();
     failToolActivity();
     const target = state.chats.find((item) => item.id === record.id);
     if (target) {
       target.events ??= [];
-      target.events.push({
+      const diagnosticEvent = {
         type: "request_error",
         createdAt: new Date().toISOString(),
         durationMs: Date.now() - requestStartedAt.getTime(),
         message: error instanceof Error ? error.message : String(error),
-      });
+      };
+      target.events.push(diagnosticEvent);
       target.updatedAt = new Date().toISOString();
-      saveState();
+      target.eventCount = target.events.length;
+      await persistEvent(target, diagnosticEvent);
     }
-    if (state.activeChatId === record.id) addError(error.message);
+    if (state.activeChatId === record.id) {
+      renderWorkspace();
+      addError(error.message);
+    }
   } finally {
     window.clearInterval(timer);
     inFlightChatId = null;
+    if (historyStore && state.activeChatId !== record.id) {
+      const completedIndex = state.chats.findIndex((item) => item.id === record.id);
+      if (completedIndex >= 0) {
+        state.chats[completedIndex] = unloadedRecord(state.chats[completedIndex]);
+      }
+    }
+    inFlightState = null;
     sendButton.disabled = false;
     promptInput.focus();
   }
@@ -976,13 +1184,16 @@ promptInput.addEventListener("keydown", (event) => {
   }
 });
 
-newChatButton.addEventListener("click", createChat);
+newChatButton.addEventListener("click", () => {
+  void createChat();
+});
 themeToggleButton.addEventListener("click", () => {
   themeApi.toggleTheme();
   syncThemeToggle();
   renderWorkspace();
 });
 downloadChatLogButton.addEventListener("click", downloadCurrentChatLog);
+notificationDismiss.addEventListener("click", hideNotification);
 menuButton.addEventListener("click", openSidebar);
 sidebarClose.addEventListener("click", closeSidebar);
 sidebarBackdrop.addEventListener("click", closeSidebar);
@@ -992,21 +1203,21 @@ toolCallDialog.addEventListener("click", (event) => {
   if (event.target === toolCallDialog) toolCallDialog.close();
 });
 window.addEventListener("storage", (event) => {
-  if (event.key === themeApi.STORAGE_KEY) {
-    themeApi.applyTheme(themeApi.loadTheme() || themeApi.systemTheme());
-    syncThemeToggle();
-    renderWorkspace();
-    return;
-  }
-  if (event.key !== STORAGE_KEY) return;
-  state = loadState();
+  if (event.key !== themeApi.STORAGE_KEY) return;
+  themeApi.applyTheme(themeApi.loadTheme() || themeApi.systemTheme());
+  syncThemeToggle();
   renderWorkspace();
 });
 
 async function initializeApp() {
   syncThemeToggle();
+  await initializeHistory();
   if (await checkAuth()) {
     renderWorkspace();
+    if (historyNotice) {
+      showNotification(historyNotice);
+      historyNotice = "";
+    }
     await checkHealth();
   }
 }
