@@ -12,6 +12,7 @@ export function createInFlightState(chatId) {
     label: PENDING_STAGES[0],
     stageIndex: 0,
     hasToolActivity: false,
+    purpose: "",
     toolCalls: [],
     toolCallTotal: null,
   };
@@ -38,6 +39,8 @@ export function setInFlightLabel(request, label) {
 
 export function updateInFlightToolCall(request, detail) {
   if (!request || !detail) return [];
+  const purpose = typeof detail.reason === "string" ? detail.reason.trim() : "";
+  if (purpose) request.purpose = purpose;
   const existingIndex = request.toolCalls.findIndex((item) => item.id === detail.id);
   if (existingIndex >= 0) {
     request.toolCalls[existingIndex] = {

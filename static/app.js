@@ -684,8 +684,18 @@ function addPending(labelText) {
 
 function syncPendingLabel() {
   if (!hasPendingForChat(inFlightState, state.activeChatId)) return;
-  const label = chat.querySelector(".pending-response .progress-label");
+  const pending = chat.querySelector(".pending-response");
+  if (!pending) return;
+  const label = pending.querySelector(".progress-label");
   if (label) label.textContent = inFlightState.label;
+  const purpose = pending.querySelector(".progress-purpose");
+  const purposeText = pending.querySelector(".progress-purpose-text");
+  const currentPurpose =
+    typeof inFlightState.purpose === "string" ? inFlightState.purpose.trim() : "";
+  if (purpose && purposeText) {
+    purposeText.textContent = currentPurpose;
+    purpose.hidden = !currentPurpose;
+  }
 }
 
 function addError(message) {

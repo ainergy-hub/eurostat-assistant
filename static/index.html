@@ -10,7 +10,7 @@
     <title>Eurostat Lens — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260728-1" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -265,12 +265,16 @@
           <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
           <p class="progress-label">Finding candidate datasets</p>
         </div>
+        <div class="progress-purpose" aria-live="polite" hidden>
+          <span class="progress-purpose-label">Purpose</span>
+          <p class="progress-purpose-text"></p>
+        </div>
       </article>
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260727-8" type="module"></script>
+    <script src="/static/app.js?v=20260728-1" type="module"></script>
   </body>
 </html>

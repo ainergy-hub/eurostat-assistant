@@ -21,6 +21,7 @@ updateInFlightToolCall(request, {
   id: "call-2",
   index: 2,
   name: "fetch_data",
+  reason: "Retrieve the requested observations.",
   status: "running",
 });
 updateInFlightToolCall(request, {
@@ -43,6 +44,7 @@ assert.equal(hasPendingForChat(request, "inflation-chat"), false);
 assert.equal(hasPendingForChat(request, "population-chat"), true);
 assert.deepEqual(request.toolCalls.map((call) => call.id), ["call-1", "call-2"]);
 assert.equal(request.toolCalls[1].status, "completed");
+assert.equal(request.purpose, "Retrieve the requested observations.");
 assert.equal(request.label, "Fetch Data completed");
 assert.equal(advancePendingStage(request), "Fetch Data completed");
 
