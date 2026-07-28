@@ -240,7 +240,9 @@ A successful chat result follows this public contract:
 ```
 
 Dataset codes shown in answers and source cards link to the corresponding Eurostat Data Browser
-page. The separate API-query link preserves the exact filtered request used for the result.
+page. The API-query action opens the exact filtered request and returned rows in an in-app panel.
+The response log shows a brief purpose for each agent action; raw arguments and result previews
+remain available under collapsed technical details.
 
 When the agent needs clarification, it can search and inspect candidate datasets without fetching
 observations. Its grounded question is returned in `answer`, while `result` remains `null`. A failed

@@ -65,9 +65,17 @@ function diagnosticToolCallDetails(details) {
 
 function diagnosticResult(result) {
   if (!result || typeof result !== "object") return result;
-  const { rows, ...metadata } = result;
+  const { rows, source_tables: sourceTables, ...metadata } = result;
   return {
     ...metadata,
+    ...(Array.isArray(sourceTables)
+      ? {
+          source_tables: sourceTables.map(({ rows: sourceRows, ...table }) => ({
+            ...table,
+            ...(Array.isArray(sourceRows) ? { rowCount: sourceRows.length } : {}),
+          })),
+        }
+      : {}),
     ...(Array.isArray(rows) ? { rowCount: rows.length } : {}),
   };
 }

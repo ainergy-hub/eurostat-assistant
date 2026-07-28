@@ -60,11 +60,25 @@ const log = buildChatLog(
           {
             id: "call-1",
             name: "fetch_data",
+            reason: "Retrieve the requested population observations.",
             status: "completed",
             result_preview: '{"geo":"DE","value":1}',
           },
         ],
-        result: { dataset: { code: "demo_pjan" }, rows: [{ geo: "DE", value: 1 }] },
+        result: {
+          dataset: { code: "demo_pjan" },
+          rows: [{ geo: "DE", value: 1 }],
+          source_tables: [
+            {
+              dataset: { code: "demo_pjan" },
+              rows: [{ geo: "DE", value: 1 }],
+            },
+            {
+              dataset: { code: "nama_10_pc" },
+              rows: [{ geo: "DE", value: 2 }],
+            },
+          ],
+        },
       },
     ],
     events: [{ type: "request_error", message: "Example failure" }],
@@ -77,10 +91,16 @@ assert.equal(log.app.version, "0.2.0");
 assert.equal(log.investigation.turnCount, 1);
 assert.equal(log.investigation.messageCount, 2);
 assert.equal(log.investigation.messages[1].toolCallDetails[0].name, "fetch_data");
+assert.equal(
+  log.investigation.messages[1].toolCallDetails[0].reason,
+  "Retrieve the requested population observations.",
+);
 assert.equal("result_preview" in log.investigation.messages[1].toolCallDetails[0], false);
 assert.equal("rows" in log.investigation.messages[1].result, false);
 assert.equal(log.investigation.messages[1].result.rowCount, 1);
 assert.equal(log.investigation.messages[1].result.dataset.code, "demo_pjan");
+assert.equal(log.investigation.messages[1].result.source_tables[0].rowCount, 1);
+assert.equal("rows" in log.investigation.messages[1].result.source_tables[0], false);
 assert.equal(log.investigation.events[0].type, "request_error");
 
 console.log("chat state tests passed");

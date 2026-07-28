@@ -55,6 +55,10 @@ const toolCallDialog = document.querySelector("#tool-call-dialog");
 const toolCallDialogClose = document.querySelector("#tool-call-dialog-close");
 const toolCallDialogSummary = document.querySelector("#tool-call-dialog-summary");
 const toolCallDetails = document.querySelector("#tool-call-details");
+const apiQueryPanel = document.querySelector("#api-query-panel");
+const apiQueryPanelTitle = document.querySelector("#api-query-panel-title");
+const apiQueryPanelClose = document.querySelector("#api-query-panel-close");
+const apiQueryPanelBody = document.querySelector("#api-query-panel-body");
 const downloadChatLogButton = document.querySelector("#download-chat-log");
 const themeToggleButton = document.querySelector("#theme-toggle");
 const notification = document.querySelector("#notification");
@@ -142,7 +146,7 @@ function renderToolCallDetails(details = currentToolCalls) {
   const completed = details.filter((detail) => detail.status === "completed").length;
   const failed = details.filter((detail) => detail.status === "error").length;
   const running = details.filter((detail) => detail.status === "running").length;
-  const summary = [`${details.length} total`, `${completed} completed`];
+  const summary = [`${completed} of ${details.length} complete`];
   if (running) summary.push(`${running} running`);
   if (failed) summary.push(`${failed} failed`);
   toolCallDialogSummary.textContent = details.length ? summary.join(" · ") : "No tool calls yet.";
@@ -158,26 +162,41 @@ function renderToolCallDetails(details = currentToolCalls) {
     );
     item.appendChild(heading);
 
-    const meta = element("div", "tool-call-meta");
-    meta.append(
-      element("span", "", `ID ${detail.id}`),
-      element("span", "", toolDuration(detail)),
+    const trace = element("div", "tool-call-trace");
+    trace.append(
+      element("span", "tool-call-trace-label", "Purpose"),
+      element(
+        "p",
+        "tool-call-reason",
+        detail.reason || "Support the answer with verified Eurostat data.",
+      ),
     );
+    item.appendChild(trace);
+
+    const meta = element("div", "tool-call-meta");
+    meta.appendChild(element("span", "", toolDuration(detail)));
     item.appendChild(meta);
 
-    const argumentsBlock = element("div");
+    const technical = element("details", "tool-call-technical");
+    technical.appendChild(element("summary", "", "Technical details"));
+    const technicalBody = element("div", "tool-call-technical-body");
+    technicalBody.appendChild(element("span", "tool-call-id", `ID ${detail.id}`));
+
+    const argumentsBlock = element("section");
     argumentsBlock.appendChild(element("h3", "", "Arguments"));
     const argumentsCode = element("pre");
     argumentsCode.textContent = JSON.stringify(detail.arguments || {}, null, 2);
     argumentsBlock.appendChild(argumentsCode);
-    item.appendChild(argumentsBlock);
+    technicalBody.appendChild(argumentsBlock);
 
     if (detail.result_preview) {
-      const resultBlock = element("div");
+      const resultBlock = element("section");
       resultBlock.appendChild(element("h3", "", "Result preview"));
       resultBlock.appendChild(element("p", "tool-call-result", detail.result_preview));
-      item.appendChild(resultBlock);
+      technicalBody.appendChild(resultBlock);
     }
+    technical.appendChild(technicalBody);
+    item.appendChild(technical);
     toolCallDetails.appendChild(item);
   }
 }
@@ -210,10 +229,8 @@ function startToolActivity() {
   renderToolCallDetails();
 }
 
-function finishToolActivity(details, total) {
-  completeInFlightState(inFlightState, details, total);
-  if (state.activeChatId !== inFlightChatId) return;
-  currentToolCalls = inFlightState?.toolCalls || currentToolCalls;
+function renderFinishedToolActivity(details, total) {
+  currentToolCalls = Array.isArray(details) ? details : [];
   toolActivity.hidden = false;
   toolActivity.className = "tool-activity";
   toolActivityCount.textContent = String(
@@ -225,6 +242,12 @@ function finishToolActivity(details, total) {
     ? `${failed} failed · Select for details`
     : `${currentToolCalls.length} completed · Select for details`;
   renderToolCallDetails();
+}
+
+function finishToolActivity(details, total) {
+  completeInFlightState(inFlightState, details, total);
+  if (state.activeChatId !== inFlightChatId) return;
+  renderFinishedToolActivity(inFlightState?.toolCalls, total);
 }
 
 function failToolActivity() {
@@ -285,7 +308,10 @@ function syncToolActivity(record) {
     renderToolCallDetails();
     return;
   }
-  finishToolActivity(latestWithDetails.toolCallDetails, latestWithDetails.toolCalls);
+  renderFinishedToolActivity(
+    latestWithDetails.toolCallDetails,
+    latestWithDetails.toolCalls,
+  );
 }
 
 function openToolCallDialog(details = currentToolCalls) {
@@ -693,11 +719,11 @@ function compareValues(a, b) {
   return 0;
 }
 
-function createTableSection(result) {
+function createTableSection(result, label = "Data") {
   const section = element("details", "result-section result-details");
   const summary = element("summary", "result-summary");
   summary.append(
-    element("span", "", "Data"),
+    element("span", "", label),
     element(
       "span",
       "result-summary-meta",
@@ -820,6 +846,24 @@ function createTableSection(result) {
   return section;
 }
 
+function createTableSections(result) {
+  const sourceTables = (result.source_tables || []).filter((table) => table?.rows?.length);
+  if (sourceTables.length < 2) return [createTableSection(result)];
+
+  const sections = [];
+  const sourceCodes = new Set(sourceTables.map((table) => table.dataset?.code).filter(Boolean));
+  if (!sourceCodes.has(result.dataset?.code)) {
+    sections.push(createTableSection(result, "Combined data"));
+  }
+  for (const table of sourceTables) {
+    const code = table.dataset?.code || "Eurostat dataset";
+    const section = createTableSection(table, `Dataset ${code}`);
+    if (table.dataset?.title) section.title = table.dataset.title;
+    sections.push(section);
+  }
+  return sections;
+}
+
 function csvCell(value) {
   const text = value === null || value === undefined ? "" : String(value);
   return `"${text.replaceAll('"', '""')}"`;
@@ -837,6 +881,68 @@ function downloadCsv(result, columns) {
   link.download = `${code}-observations.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function sourceTableForDataset(result, dataset) {
+  const sourceTable = (result.source_tables || []).find(
+    (table) => table.dataset?.code === dataset.code,
+  );
+  if (sourceTable) return sourceTable;
+  return result.dataset?.code === dataset.code ? result : null;
+}
+
+function openApiQueryPanel(dataset, table) {
+  apiQueryPanelTitle.textContent = dataset.title || dataset.code || "Query results";
+  apiQueryPanelBody.replaceChildren();
+
+  const overview = element("section", "api-query-overview");
+  const codeRow = element("div", "api-query-code-row");
+  codeRow.append(
+    element("span", "source-label", "Dataset"),
+    element("code", "api-query-code", dataset.code || "Not reported"),
+  );
+  overview.appendChild(codeRow);
+
+  if (dataset.source_url) {
+    const request = element("div", "api-query-request");
+    request.append(
+      element("span", "source-label", "Filtered API request"),
+      element("code", "api-query-url", dataset.source_url),
+    );
+    overview.appendChild(request);
+  }
+
+  const chips = element("div", "api-query-filters");
+  chips.appendChild(element("span", "source-label", "Applied filters"));
+  const chipList = element("div", "filter-chips");
+  Object.entries(table?.filters || {}).forEach(([key, values]) => {
+    for (const value of values) {
+      chipList.appendChild(element("span", "filter-chip", `${key}=${value}`));
+    }
+  });
+  if (!chipList.childElementCount) {
+    chipList.appendChild(element("span", "source-value", "No filters reported"));
+  }
+  chips.appendChild(chipList);
+  overview.appendChild(chips);
+  apiQueryPanelBody.appendChild(overview);
+
+  if (table?.rows?.length) {
+    const tableSection = createTableSection(table, "Returned observations");
+    tableSection.classList.add("api-query-table");
+    tableSection.open = true;
+    apiQueryPanelBody.appendChild(tableSection);
+  } else {
+    apiQueryPanelBody.appendChild(
+      element(
+        "p",
+        "api-query-empty",
+        "The stored answer does not contain rows for this source. Run the query again to load them.",
+      ),
+    );
+  }
+
+  apiQueryPanel.showModal();
 }
 
 function createProvenance(result) {
@@ -876,11 +982,16 @@ function createProvenance(result) {
     grid.appendChild(sourceItem(`Title${suffix}`, dataset.title));
     grid.appendChild(sourceItem(`Updated${suffix}`, dataset.updated || "Not reported"));
     if (dataset.source_url) {
-      const queryLink = element("a", "", "Open filtered API query ↗");
-      queryLink.href = dataset.source_url;
-      queryLink.target = "_blank";
-      queryLink.rel = "noopener noreferrer";
-      grid.appendChild(sourceItem(`API query${suffix}`, queryLink));
+      const queryButton = element("button", "source-query-button", "View query results →");
+      queryButton.type = "button";
+      queryButton.setAttribute(
+        "aria-label",
+        `View API query results for ${dataset.code || "this dataset"}`,
+      );
+      queryButton.addEventListener("click", () => {
+        openApiQueryPanel(dataset, sourceTableForDataset(result, dataset));
+      });
+      grid.appendChild(sourceItem(`API query${suffix}`, queryButton));
     }
   });
 
@@ -938,7 +1049,7 @@ function addResponse(answerText, result, toolCalls, details = [], shouldScroll =
   if (result?.rows?.length) {
     const chartSection = createChartSection(result);
     if (chartSection) response.appendChild(chartSection);
-    response.appendChild(createTableSection(result));
+    response.append(...createTableSections(result));
     if (result.warnings?.length) {
       response.appendChild(element("p", "warning", result.warnings.join(" ")));
     }
@@ -1071,14 +1182,16 @@ composer.addEventListener("submit", async (event) => {
   inFlightChatId = record.id;
   inFlightState = createInFlightState(record.id);
   await persistMessage(record, userMessage);
-  hero.hidden = true;
-  addQuestion(message);
-  currentChatTitle.textContent = record.title;
-  downloadChatLogButton.disabled = false;
+  if (state.activeChatId === record.id) {
+    hero.hidden = true;
+    addQuestion(message);
+    currentChatTitle.textContent = record.title;
+    downloadChatLogButton.disabled = false;
+    addPending(inFlightState.label);
+  }
   renderChatList();
   promptInput.value = "";
   sendButton.disabled = true;
-  addPending(inFlightState.label);
   const timer = window.setInterval(() => {
     advancePendingStage(inFlightState);
     syncPendingLabel();
@@ -1201,6 +1314,17 @@ toolActivity.addEventListener("click", () => openToolCallDialog());
 toolCallDialogClose.addEventListener("click", () => toolCallDialog.close());
 toolCallDialog.addEventListener("click", (event) => {
   if (event.target === toolCallDialog) toolCallDialog.close();
+});
+apiQueryPanelClose.addEventListener("click", () => apiQueryPanel.close());
+apiQueryPanel.addEventListener("click", (event) => {
+  if (event.target !== apiQueryPanel) return;
+  const bounds = apiQueryPanel.getBoundingClientRect();
+  const outsidePanel =
+    event.clientX < bounds.left ||
+    event.clientX > bounds.right ||
+    event.clientY < bounds.top ||
+    event.clientY > bounds.bottom;
+  if (outsidePanel) apiQueryPanel.close();
 });
 window.addEventListener("storage", (event) => {
   if (event.key !== themeApi.STORAGE_KEY) return;

@@ -79,6 +79,11 @@ category codes as though they were datasets.
 
 Also include a compact Markdown table of the relevant returned observations. Prefer user-friendly columns such as geography, period, unit, indicator, category, value, and status/flag when present. Keep the table bounded to the rows needed to answer the question; if the result is too large, show the most relevant rows and explain how it was limited.
 
+When an answer uses values from multiple datasets, preserve and show one bounded table for every
+dataset used. Put each table in its own expandable section when the host supports expandable
+content, label the section with the dataset code and title, and do not substitute only a joined or
+last-fetched table for the underlying source tables.
+
 Do not treat Eurostat values as versioned historical database snapshots. Eurostat states that the database contains the latest dataset versions.
 
 ## Resources

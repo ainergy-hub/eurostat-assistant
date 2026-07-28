@@ -17,10 +17,12 @@ from app.sandbox_agent import (
     TOOLS,
     build_messages,
     build_scatter_result,
+    build_source_tables,
     build_structured_result,
     response_result,
     run,
     text_content,
+    tool_call_reason,
     tool_arguments,
     tool_output_preview,
 )
@@ -137,6 +139,58 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response.result.dataset.code, "demo_pjan")
         self.assertEqual(response.result.chart.type, "line")
         self.assertEqual(response.tool_calls, 3)
+
+    def test_multiple_datasets_preserve_each_source_table(self) -> None:
+        second_fetch = {
+            "arguments": {
+                "dataset": "nama_10_pc",
+                "params": ["geo=DE,FR", "unit=CP_EUR_HAB"],
+                "last_time_period": 1,
+            },
+            "output": {
+                "metadata": {"label": "GDP per capita"},
+                "rows": [
+                    {
+                        "geo": "DE",
+                        "geo_label": "Germany",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 52_000,
+                    },
+                    {
+                        "geo": "FR",
+                        "geo_label": "France",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 45_000,
+                    },
+                ],
+            },
+        }
+
+        tables = build_source_tables([self.fetch_record, second_fetch])
+        result = response_result(
+            second_fetch,
+            None,
+            fetch_records=[self.fetch_record, second_fetch],
+        )
+
+        assert result is not None
+        self.assertEqual([table["dataset"]["code"] for table in tables], ["demo_pjan", "nama_10_pc"])
+        self.assertEqual(
+            [table["dataset"]["code"] for table in result["source_tables"]],
+            ["demo_pjan", "nama_10_pc"],
+        )
+        self.assertEqual([source["code"] for source in result["sources"]], ["demo_pjan", "nama_10_pc"])
+        response = ChatResponse(answer="Comparison.", result=result)
+        self.assertEqual(len(response.result.source_tables), 2)
+        self.assertEqual(response.result.source_tables[0].rows[0]["value"], 83_000_000)
+
+    def test_source_tables_require_distinct_dataset_codes(self) -> None:
+        repeated_fetch = json.loads(json.dumps(self.fetch_record))
+        repeated_fetch["arguments"]["last_time_period"] = 1
+
+        self.assertEqual(build_source_tables([self.fetch_record, repeated_fetch]), [])
 
     def test_category_comparison_uses_horizontal_bars(self) -> None:
         self.fetch_record["output"]["rows"] = [
@@ -538,6 +592,10 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response["result"]["chart"]["type"], "scatter")
         self.assertEqual(response["result"]["dataset"]["code"], "sdg_10_10__pat_ep_tot")
         self.assertEqual(len(response["result"]["rows"]), 2)
+        self.assertEqual(
+            [table["dataset"]["code"] for table in response["result"]["source_tables"]],
+            ["sdg_10_10", "pat_ep_tot"],
+        )
         self.assertEqual(response["tool_call_details"][-1]["name"], "create_scatter")
         self.assertEqual(response["tool_call_details"][-1]["status"], "completed")
 
@@ -965,7 +1023,15 @@ class StructuredResultTests(unittest.TestCase):
                                     "id": "search-1",
                                     "function": {
                                         "name": "search_eurostat",
-                                        "arguments": '{"query":"population"}',
+                                        "arguments": json.dumps(
+                                            {
+                                                "query": "population",
+                                                "reason": (
+                                                    "Find the official population dataset that "
+                                                    "matches the question."
+                                                ),
+                                            }
+                                        ),
                                     },
                                 },
                                 {
@@ -1199,7 +1265,15 @@ class StructuredResultTests(unittest.TestCase):
                                     "id": "call-1",
                                     "function": {
                                         "name": "search_eurostat",
-                                        "arguments": '{"query":"population"}',
+                                        "arguments": json.dumps(
+                                            {
+                                                "query": "population",
+                                                "reason": (
+                                                    "Find the official population dataset that "
+                                                    "matches the question."
+                                                ),
+                                            }
+                                        ),
                                     },
                                 },
                                 {
@@ -1251,6 +1325,12 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response["tool_call_details"][0]["name"], "search_eurostat")
         self.assertEqual(response["tool_call_details"][0]["status"], "completed")
         self.assertEqual(
+            response["tool_call_details"][0]["reason"],
+            "Find the official population dataset that matches the question.",
+        )
+        self.assertNotIn("reason", response["tool_call_details"][0]["arguments"])
+        self.assertIn("valid filter codes", response["tool_call_details"][1]["reason"])
+        self.assertEqual(
             response["tool_call_details"][1]["arguments"],
             {"dataset": "demo_pjan"},
         )
@@ -1265,6 +1345,20 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertEqual(len(preview), MAX_EVENT_PREVIEW_CHARS)
         self.assertTrue(preview.endswith("…"))
+
+    def test_tool_reason_is_brief_and_has_safe_fallbacks(self) -> None:
+        reason = tool_call_reason(
+            "fetch_eurostat",
+            {"dataset": "demo_pjan"},
+            " ".join(["Retrieve"] * 100),
+        )
+
+        self.assertLessEqual(len(reason), 180)
+        self.assertTrue(reason.endswith("…"))
+        self.assertEqual(
+            tool_call_reason("fetch_eurostat", {"dataset": "demo_pjan"}),
+            "Retrieve the filtered observations needed from demo_pjan.",
+        )
 
     def test_provider_content_parts_are_normalized_without_reasoning(self) -> None:
         content = [

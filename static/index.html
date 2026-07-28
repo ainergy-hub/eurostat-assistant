@@ -10,7 +10,7 @@
     <title>Eurostat Lens — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260727-5" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260727-7" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -144,7 +144,7 @@
         </header>
 
         <section class="hero" id="hero">
-          <h1>Explore European data.</h1>
+          <h1>Explore Eurostat data.</h1>
           <div class="suggestions" aria-label="Example investigations">
             <button
               class="suggestion"
@@ -225,15 +225,37 @@
     <dialog class="tool-call-dialog" id="tool-call-dialog" aria-labelledby="tool-call-dialog-title">
       <div class="tool-call-dialog-header">
         <div>
-          <span class="thread-label">Agent activity</span>
-          <h2 id="tool-call-dialog-title">Tool calls</h2>
+          <span class="thread-label">Response log</span>
+          <h2 id="tool-call-dialog-title">Agent trace</h2>
         </div>
-        <button class="dialog-close" id="tool-call-dialog-close" type="button" aria-label="Close tool-call details">
+        <button class="dialog-close" id="tool-call-dialog-close" type="button" aria-label="Close agent trace">
           ×
         </button>
       </div>
       <div class="tool-call-dialog-summary" id="tool-call-dialog-summary">No tool calls yet.</div>
       <ol class="tool-call-details" id="tool-call-details"></ol>
+    </dialog>
+
+    <dialog
+      class="api-query-panel"
+      id="api-query-panel"
+      aria-labelledby="api-query-panel-title"
+    >
+      <header class="api-query-panel-header">
+        <div>
+          <span class="thread-label">Eurostat API query</span>
+          <h2 id="api-query-panel-title">Query results</h2>
+        </div>
+        <button
+          class="dialog-close"
+          id="api-query-panel-close"
+          type="button"
+          aria-label="Close API query results"
+        >
+          ×
+        </button>
+      </header>
+      <div class="api-query-panel-body" id="api-query-panel-body"></div>
     </dialog>
 
     <template id="pending-template">
@@ -249,6 +271,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260727-6" type="module"></script>
+    <script src="/static/app.js?v=20260727-8" type="module"></script>
   </body>
 </html>

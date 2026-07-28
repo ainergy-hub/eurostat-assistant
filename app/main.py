@@ -142,9 +142,18 @@ class ChartIntent(BaseModel):
     zero_baseline: bool | Literal["auto"] = "auto"
 
 
+class SourceTable(BaseModel):
+    dataset: DatasetInfo
+    filters: dict[str, list[str]]
+    columns: list[ColumnInfo]
+    rows: list[dict[str, Any]] = Field(max_length=500)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DataResult(BaseModel):
     dataset: DatasetInfo
     sources: list[DatasetInfo] = Field(default_factory=list)
+    source_tables: list[SourceTable] = Field(default_factory=list)
     filters: dict[str, list[str]]
     columns: list[ColumnInfo]
     rows: list[dict[str, Any]] = Field(max_length=500)
@@ -167,6 +176,7 @@ class ToolCallDetail(BaseModel):
     id: str
     index: int = Field(ge=1)
     name: str
+    reason: str = Field(default="", max_length=180)
     arguments: dict[str, Any] = Field(default_factory=dict)
     status: Literal["running", "completed", "error"]
     duration_ms: int | None = Field(default=None, ge=0)

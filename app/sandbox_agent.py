@@ -58,6 +58,15 @@ CHART_PURPOSES = {
     "change",
 }
 
+TOOL_REASON_PROPERTY = {
+    "type": "string",
+    "maxLength": 160,
+    "description": (
+        "One brief user-facing sentence explaining what this call will retrieve or verify. "
+        "Do not include hidden reasoning."
+    ),
+}
+
 
 TOOLS = [
     {
@@ -70,6 +79,7 @@ TOOLS = [
                 "properties": {
                     "query": {"type": "string"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+                    "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": ["query"],
                 "additionalProperties": False,
@@ -83,7 +93,10 @@ TOOLS = [
             "description": "Inspect dimensions and sample categories for a Eurostat dataset code.",
             "parameters": {
                 "type": "object",
-                "properties": {"dataset": {"type": "string"}},
+                "properties": {
+                    "dataset": {"type": "string"},
+                    "reason": TOOL_REASON_PROPERTY,
+                },
                 "required": ["dataset"],
                 "additionalProperties": False,
             },
@@ -107,6 +120,7 @@ TOOLS = [
                     },
                     "last_time_period": {"type": "integer", "minimum": 1, "maximum": 20},
                     "time": {"type": "array", "items": {"type": "string"}},
+                    "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": ["dataset"],
                 "additionalProperties": False,
@@ -159,6 +173,7 @@ TOOLS = [
                             "Optional shared row field used to label points, normally geo_label."
                         ),
                     },
+                    "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": [
                     "x_dataset",
@@ -237,6 +252,7 @@ TOOLS = [
                         ),
                     },
                     "title": {"type": "string"},
+                    "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": ["purpose"],
                 "additionalProperties": False,
@@ -362,6 +378,34 @@ def tool_arguments(value: Any) -> tuple[str, dict[str, Any]]:
 
 def _call_fingerprint(name: str, arguments: dict[str, Any]) -> str:
     return f"{name}:{json.dumps(arguments, ensure_ascii=False, sort_keys=True, separators=(',', ':'))}"
+
+
+def tool_call_reason(
+    name: str,
+    arguments: dict[str, Any],
+    provided_reason: Any = None,
+) -> str:
+    if isinstance(provided_reason, str):
+        reason = " ".join(provided_reason.split())
+        if reason:
+            return reason if len(reason) <= 180 else f"{reason[:179].rstrip()}…"
+
+    dataset = str(arguments.get("dataset") or "the selected dataset")
+    if name == "search_eurostat":
+        query = " ".join(str(arguments.get("query") or "the requested measure").split())
+        return f"Find candidate Eurostat datasets for “{query[:100]}”."
+    if name == "inspect_dimensions":
+        return f"Check {dataset} dimensions and valid filter codes before fetching values."
+    if name == "fetch_eurostat":
+        return f"Retrieve the filtered observations needed from {dataset}."
+    if name == "create_scatter":
+        x_dataset = str(arguments.get("x_dataset") or "the first dataset")
+        y_dataset = str(arguments.get("y_dataset") or "the second dataset")
+        return f"Pair observations from {x_dataset} and {y_dataset} for a relationship view."
+    if name == "configure_chart":
+        purpose = str(arguments.get("purpose") or "the requested comparison")
+        return f"Choose a readable chart for {purpose}."
+    return f"Run {name.replace('_', ' ')} to support the answer."
 
 
 def _dimension_catalog(output: str) -> dict[str, dict[str, Any]] | None:
@@ -1129,6 +1173,35 @@ def build_structured_result(
     }
 
 
+def build_source_tables(fetch_records: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not fetch_records:
+        return []
+
+    records_by_dataset: dict[str, dict[str, Any]] = {}
+    for record in fetch_records:
+        dataset_code = str((record.get("arguments") or {}).get("dataset") or "")
+        if dataset_code:
+            records_by_dataset[dataset_code] = record
+    if len(records_by_dataset) < 2:
+        return []
+
+    tables: list[dict[str, Any]] = []
+    for record in records_by_dataset.values():
+        result = build_structured_result(record)
+        if not result:
+            continue
+        tables.append(
+            {
+                "dataset": result["dataset"],
+                "filters": result["filters"],
+                "columns": result["columns"],
+                "rows": result["rows"],
+                "warnings": result["warnings"],
+            }
+        )
+    return tables
+
+
 def reuse_context_result(
     context_result: dict[str, Any] | None,
     chart_choice: dict[str, Any] | None = None,
@@ -1154,12 +1227,20 @@ def response_result(
     context_result: dict[str, Any] | None,
     chart_choice: dict[str, Any] | None = None,
     composed_result: dict[str, Any] | None = None,
+    fetch_records: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     if composed_result:
-        return reuse_context_result(composed_result, chart_choice)
-    if fetch_record:
-        return build_structured_result(fetch_record, chart_choice)
-    return reuse_context_result(context_result, chart_choice)
+        result = reuse_context_result(composed_result, chart_choice)
+    elif fetch_record:
+        result = build_structured_result(fetch_record, chart_choice)
+    else:
+        result = reuse_context_result(context_result, chart_choice)
+
+    source_tables = build_source_tables(fetch_records)
+    if result and source_tables:
+        result["source_tables"] = source_tables
+        result["sources"] = [table["dataset"] for table in source_tables]
+    return result
 
 
 def openrouter_chat(
@@ -1209,10 +1290,11 @@ Use the tools to search, inspect, and fetch Eurostat data. Prefer small bounded 
 When a concept could map to materially different Eurostat measures, perform bounded discovery before asking: run at most one catalogue search and inspect up to two credible candidates. Do not fetch observations for competing interpretations. If ambiguity remains, ask one concise question grounded in the discovered dataset titles, codes, units, dimensions, and coverage, and recommend the candidate that best matches the user's wording. If one candidate clearly matches, continue without asking and state any minor assumption.
 If the user provides an exact dataset code, inspect it directly without searching. Use at most two catalogue searches per requested measure. If two searches do not produce a credible candidate, stop searching and ask the user to choose from the closest candidates.
 Do not repeat a tool call with the same arguments. After a fetch returns zero rows or invalid filters, correct the filters from the inspected dimension codes; do not restart dataset search.
+For every tool call, set reason to one brief user-facing sentence describing what the call will retrieve or verify. Keep it under 160 characters and do not expose hidden chain-of-thought.
 The request may include a reusable structured result from the most recent chart. When it does, answer follow-up questions from those exact rows without calling search_eurostat, inspect_dimensions, or fetch_eurostat again. Fetch new data only when the user explicitly requests a different dataset, filters, geography, time range, or facts that are not present in the reusable rows.
 The host selects a safe default chart automatically. After rows are available, call configure_chart when the user requests a particular visualization or modification, or when the question's analytical purpose makes a richer chart materially clearer. Use type=auto with purpose when the host should resolve the best compatible chart. A promise in prose does not modify the chart: only describe a chart change after configure_chart returns accepted=true.
 For a relationship or correlation between measures from two datasets, fetch the same geography and statistical period from both datasets, filter each fetch to one numeric observation per geography-period, and then call create_scatter. Do not say you made the cross-dataset scatter plot unless create_scatter returned accepted=true. The joined scatter result also supplies the paired two-measure table. You may then call configure_chart to add a trendline, labels, sizing, or another compatible modification.
-The host application satisfies the skill's table requirement by rendering the fetched observations as an interactive table, so do not repeat them as a Markdown table. Give the interpretation, important caveats, dataset code, and filters in concise prose.
+The host application satisfies the skill's table requirement by rendering the fetched observations as an interactive table, so do not repeat them as a Markdown table. When values come from multiple datasets, the host renders every distinct source dataset as its own expandable table in addition to any joined table. Give the interpretation, important caveats, dataset code, and filters in concise prose.
 """.strip()
 
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
@@ -1276,6 +1358,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     context_result,
                     chart_choice,
                     composed_result,
+                    fetch_records,
                 ),
                 "tool_calls": tool_call_count,
                 "tool_call_details": tool_call_details,
@@ -1285,6 +1368,9 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         for tool_call in tool_calls:
             function = tool_call["function"]
             raw_arguments, parsed_arguments = tool_arguments(function.get("arguments", "{}"))
+            provided_reason = parsed_arguments.pop("reason", None)
+            if provided_reason is not None:
+                raw_arguments = json.dumps(parsed_arguments, ensure_ascii=False)
             function["arguments"] = raw_arguments
             function_name = str(function.get("name") or "unknown_tool")
             fingerprint = _call_fingerprint(function_name, parsed_arguments)
@@ -1333,6 +1419,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 "id": str(tool_call.get("id") or f"tool-call-{tool_call_count}"),
                 "index": tool_call_count,
                 "name": function_name,
+                "reason": tool_call_reason(function_name, parsed_arguments, provided_reason),
                 "arguments": parsed_arguments,
                 "status": "running",
                 "duration_ms": None,
@@ -1373,6 +1460,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     context_result,
                     None,
                     composed_result,
+                    fetch_records,
                 )
                 current_rows = current_result.get("rows") if current_result else None
                 current_dataset = current_result.get("dataset") if current_result else None
@@ -1460,6 +1548,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             context_result,
             chart_choice,
             composed_result,
+            fetch_records,
         ),
         "tool_calls": tool_call_count,
         "tool_call_details": tool_call_details,
