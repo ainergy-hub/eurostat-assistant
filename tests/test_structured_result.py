@@ -19,6 +19,8 @@ from app.sandbox_agent import (
     build_scatter_result,
     build_source_tables,
     build_structured_result,
+    contains_tool_markup,
+    legacy_tool_calls,
     response_result,
     run,
     text_content,
@@ -168,11 +170,14 @@ class StructuredResultTests(unittest.TestCase):
             },
         }
 
-        tables = build_source_tables([self.fetch_record, second_fetch])
+        first_fetch = {**self.fetch_record, "result_id": "fetch-1"}
+        second_fetch["result_id"] = "fetch-2"
+        tables = build_source_tables([first_fetch, second_fetch])
         result = response_result(
             second_fetch,
             None,
-            fetch_records=[self.fetch_record, second_fetch],
+            fetch_records=[first_fetch, second_fetch],
+            selected_result_id="fetch-2",
         )
 
         assert result is not None
@@ -192,7 +197,7 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertEqual(build_source_tables([self.fetch_record, repeated_fetch]), [])
 
-    def test_category_comparison_uses_horizontal_bars(self) -> None:
+    def test_category_comparison_does_not_create_an_unsolicited_chart(self) -> None:
         self.fetch_record["output"]["rows"] = [
             {
                 "value": 125,
@@ -211,11 +216,9 @@ class StructuredResultTests(unittest.TestCase):
         result = build_structured_result(self.fetch_record)
 
         assert result is not None
-        self.assertEqual(result["chart"]["type"], "bar")
-        self.assertEqual(result["chart"]["orientation"], "horizontal")
-        self.assertEqual(result["chart"]["x"], "product_label")
+        self.assertEqual(result["chart"]["type"], "none")
         response = ChatResponse(answer="Comparison.", result=result)
-        self.assertEqual(response.result.chart.orientation, "horizontal")
+        self.assertEqual(response.result.chart.type, "none")
 
     def test_ai_can_choose_scatter_for_two_numeric_fields(self) -> None:
         result = build_structured_result(
@@ -264,7 +267,41 @@ class StructuredResultTests(unittest.TestCase):
         self.assertIn("heatmap", properties["type"]["enum"])
         self.assertIn("distribution", properties["purpose"]["enum"])
         self.assertEqual(properties["top_n"]["maximum"], 50)
+        self.assertIn("x_label", properties)
+        self.assertIn("y_label", properties)
         self.assertFalse(configure_chart["parameters"]["additionalProperties"])
+
+    def test_result_selection_tool_is_available(self) -> None:
+        select_result = next(
+            tool["function"] for tool in TOOLS if tool["function"]["name"] == "select_result"
+        )
+
+        self.assertEqual(select_result["parameters"]["required"], ["result_id"])
+        self.assertFalse(select_result["parameters"]["additionalProperties"])
+
+    def test_multiple_fetches_require_an_explicit_result_selection(self) -> None:
+        first = {**self.fetch_record, "result_id": "fetch-1"}
+        second = json.loads(json.dumps(self.fetch_record))
+        second["result_id"] = "fetch-2"
+        second["arguments"]["dataset"] = "nama_10_gdp"
+        second["output"]["metadata"]["label"] = "GDP"
+
+        self.assertIsNone(
+            response_result(
+                second,
+                None,
+                fetch_records=[first, second],
+            )
+        )
+        selected = response_result(
+            second,
+            None,
+            fetch_records=[first, second],
+            selected_result_id="fetch-1",
+        )
+
+        assert selected is not None
+        self.assertEqual(selected["dataset"]["code"], "demo_pjan")
 
     def test_auto_distribution_choice_resolves_to_histogram(self) -> None:
         result = build_structured_result(
@@ -675,11 +712,11 @@ class StructuredResultTests(unittest.TestCase):
         self.assertIn('"geo":"DE"', messages[-2]["content"])
         self.assertEqual(messages[-1]["content"], "Which country grew faster?")
 
-    def test_previous_result_is_returned_without_a_new_fetch(self) -> None:
+    def test_previous_result_is_not_republished_without_a_new_fetch(self) -> None:
         context_result = build_structured_result(self.fetch_record)
         result = response_result(None, context_result)
 
-        self.assertEqual(result, context_result)
+        self.assertIsNone(result)
 
     def test_follow_up_can_rechart_previous_rows_without_fetching(self) -> None:
         context_result = build_structured_result(self.fetch_record)
@@ -693,6 +730,7 @@ class StructuredResultTests(unittest.TestCase):
                 "series": "geo_label",
                 "orientation": "vertical",
             },
+            selected_result_id="context",
         )
 
         assert result is not None
@@ -722,7 +760,7 @@ class StructuredResultTests(unittest.TestCase):
         )
 
         self.assertEqual(response["tool_calls"], 0)
-        self.assertEqual(response["result"], context_result)
+        self.assertIsNone(response["result"])
 
     @patch("app.sandbox_agent.openrouter_chat")
     def test_agent_can_configure_reusable_rows_without_fetching(self, chat_mock) -> None:
@@ -1377,6 +1415,51 @@ class StructuredResultTests(unittest.TestCase):
         raw, parsed = tool_arguments('{"query":"population"}')
         self.assertEqual(raw, '{"query":"population"}')
         self.assertEqual(parsed, {"query": "population"})
+
+    def test_legacy_provider_tool_markup_is_normalized(self) -> None:
+        content = (
+            "<tool_call>inspect_dimensions"
+            "<arg_key>dataset</arg_key><arg_value>lfst_r_lfu3rt</arg_value>"
+            "<arg_key>matches</arg_key>"
+            '<arg_value>["Baden-Württemberg","Castille and Léon"]</arg_value>'
+            "</tool_call>"
+        )
+
+        calls = legacy_tool_calls(content)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["function"]["name"], "inspect_dimensions")
+        self.assertEqual(
+            json.loads(calls[0]["function"]["arguments"]),
+            {
+                "dataset": "lfst_r_lfu3rt",
+                "matches": ["Baden-Württemberg", "Castille and Léon"],
+            },
+        )
+        self.assertTrue(contains_tool_markup(content))
+
+    @patch("app.sandbox_agent.openrouter_chat")
+    def test_malformed_tool_markup_fails_closed_without_reusing_context(self, chat_mock) -> None:
+        context_result = build_structured_result(self.fetch_record)
+        chat_mock.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": (
+                            "<tool_call>inspect_dimensions"
+                            "<arg_key>dataset</arg_key><arg_value>demo_pjan</arg_value>"
+                        ),
+                    }
+                }
+            ]
+        }
+
+        response = run({"query": "Try it.", "context_result": context_result})
+
+        self.assertIsNone(response["result"])
+        self.assertNotIn("<tool_call>", response["answer"])
+        self.assertIn("safely interpret", response["answer"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "france_input_output",
+  "tags": ["input-output", "no-chart", "smoke"],
+  "turns": [
+    {
+      "prompt": "get me the input-output table for France from 2023",
+      "expect": {
+        "result": "present",
+        "dataset": "naio_10_cp1700",
+        "filters": {
+          "geo": ["FR"],
+          "time": ["2022"]
+        },
+        "row_count": 4,
+        "required_rows": [
+          {"geo": "FR", "time": "2022", "row_label": "Agriculture", "column_label": "Manufacturing"}
+        ],
+        "chart": {"type": "none"},
+        "tools": ["fetch_eurostat"],
+        "no_tool_errors": true,
+        "answer_contains": ["2022", "2023"],
+        "provenance": true
+      }
+    }
+  ]
+}

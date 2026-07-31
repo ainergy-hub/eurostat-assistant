@@ -11,12 +11,13 @@ Use Eurostat as the authoritative source when the user asks for European officia
 
 1. Reuse compatible structured Eurostat rows already present in the conversation. Do not search, inspect, or fetch the same data again.
 2. Identify the requested statistical concept, geography, time range, unit, and comparison grain. Separate details discoverable from Eurostat from preferences only the user can choose.
-3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly. Otherwise run one catalogue search and inspect up to two credible candidate datasets. Do not fetch observations for competing interpretations.
+3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly. Otherwise run one catalogue search and inspect up to two credible candidate datasets. Pass requested region, unit, product, and indicator labels as dimension matches so codes outside the samples are discovered rather than guessed. Do not fetch observations for competing interpretations.
 4. After discovery, continue when one candidate clearly matches. State and proceed with a reasonable reversible assumption when the remaining ambiguity is minor. Ask one focused question when candidates represent materially different concepts, units, populations, or geographic grains.
 5. Ground clarification questions in the discovery: name the search performed, candidate dataset titles and codes, the relevant differences, and a recommended option when one is a better match.
 6. After the measure is resolved, fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`.
 7. Answer from the returned data. Name the dataset code, filters, units, geography, and latest period used. Show the relevant observations in a Markdown table as part of the user-facing response.
-8. When a visualization is requested or materially improves the answer, choose it from the analytical relationship and the validated row shape. Read `references/chart-selection.md` for the chart matrix and guardrails. Reuse loaded rows for chart-only follow-ups instead of fetching again.
+8. When a visualization is requested or a clean multi-period trend materially improves the answer, choose it from the analytical relationship and the validated row shape. Read `references/chart-selection.md` for the chart matrix and guardrails. Do not automatically chart single-period, matrix, or high-dimensional tables. Reuse loaded rows for chart-only follow-ups instead of fetching again.
+9. Every successful fetch receives a result ID. One successful fetch can be published automatically. After multiple successful fetches, explicitly select the result that supports the final answer. Previous conversation data is reasoning context, not a result to republish unless the user asks to reuse or re-chart it.
 
 Prefer the smallest query that answers the question. Always filter high-cardinality dimensions such as `geo`, `time`, `unit`, `freq`, `sex`, `age`, `nace_r2`, `indic_*`, `siec`, `currency`, or `coicop` before fetching broad data.
 
@@ -28,7 +29,7 @@ Run from the skill directory or pass the absolute script path:
 
 ```bash
 python3 scripts/eurostat_api.py search "population by age country"
-python3 scripts/eurostat_api.py dimensions demo_pjan
+python3 scripts/eurostat_api.py dimensions demo_pjan --match Germany --match France
 python3 scripts/eurostat_api.py fetch demo_pjan --param geo=DE --param sex=T --param age=TOTAL --last-time-period 5
 ```
 
@@ -44,6 +45,12 @@ Search results are only candidates. Choose datasets by matching:
 - whether the table is country-level, regional, annual, quarterly, monthly, or detailed by category.
 
 If several datasets fit, inspect dimensions for each before fetching. If a question needs a concept definition, read `references/eurostat-api.md`.
+
+Dimension samples are intentionally bounded. Use repeatable `--match` terms (or the
+`inspect_dimensions.matches` tool argument) to search complete category lists for requested labels,
+including misspellings and diacritics. For generic solar electricity generation, use solar
+photovoltaic when no aggregate solar-electricity category exists, state that assumption, and do not
+substitute solar thermal.
 
 ## Fetching Rules
 

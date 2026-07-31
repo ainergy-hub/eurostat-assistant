@@ -41,7 +41,21 @@ function sortDimensionValues(values) {
 }
 
 function fieldLabel(field) {
-  return String(field ?? "").replaceAll("_", " ");
+  const cleaned = String(field ?? "")
+    .replace(/_label$/, "")
+    .replaceAll("_", " ")
+    .trim();
+  const known = {
+    geo: "Geography",
+    time: "Period",
+    unit: "Unit",
+    value: "Value",
+    siec: "Energy product",
+    "nrg bal": "Energy balance",
+    "na item": "National accounts item",
+  };
+  if (known[cleaned]) return known[cleaned];
+  return cleaned.replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function fieldTitle(spec, axis) {
@@ -807,6 +821,7 @@ export function createChartSection(result) {
     change: "Change",
   }[spec.purpose] || "Chart";
   copy.appendChild(element("h2", "", sectionTitle));
+  if (spec.title) copy.appendChild(element("p", "chart-context", spec.title));
   const interactionHint = hasInteractiveLegend(spec, rows)
     ? "Click legend items to highlight series; hover or focus a mark for details"
     : "Hover or focus a mark to inspect an observation";

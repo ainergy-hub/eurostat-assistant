@@ -31,6 +31,7 @@ TOOL_CALL_LIMITS = {
     "fetch_eurostat": 4,
     "create_scatter": 2,
     "configure_chart": 3,
+    "select_result": 3,
 }
 EVENT_PREFIX = "__EUROSTAT_EVENT__"
 MAX_EVENT_PREVIEW_CHARS = 700
@@ -95,6 +96,15 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "dataset": {"type": "string"},
+                    "matches": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 8,
+                        "description": (
+                            "Requested category labels or codes to match across the complete "
+                            "dimension catalog, including regions, units, and products."
+                        ),
+                    },
                     "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": ["dataset"],
@@ -251,10 +261,47 @@ TOOLS = [
                             "Use auto unless the user explicitly requests a zero or free baseline."
                         ),
                     },
+                    "x_label": {
+                        "type": "string",
+                        "maxLength": 80,
+                        "description": "Reader-facing horizontal-axis title including units when relevant.",
+                    },
+                    "y_label": {
+                        "type": "string",
+                        "maxLength": 80,
+                        "description": "Reader-facing vertical-axis title including units when relevant.",
+                    },
                     "title": {"type": "string"},
                     "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": ["purpose"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "select_result",
+            "description": (
+                "Select which successful fetch should be published as the answer's table and "
+                "chart. Use result_id=context only when the user explicitly asks to reuse the "
+                "previous result. Required after multiple successful fetches unless a composed "
+                "scatter result is created."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "result_id": {
+                        "type": "string",
+                        "description": (
+                            "Opaque result_id returned by fetch_eurostat, or context for the "
+                            "reusable previous result."
+                        ),
+                    },
+                    "reason": TOOL_REASON_PROPERTY,
+                },
+                "required": ["result_id"],
                 "additionalProperties": False,
             },
         },
@@ -295,7 +342,10 @@ def call_tool(name: str, raw_arguments: str) -> str:
         )
 
     if name == "inspect_dimensions":
-        return run_helper(["dimensions", str(args["dataset"])])
+        command = ["dimensions", str(args["dataset"])]
+        for match in args.get("matches", []) or []:
+            command.extend(["--match", str(match)])
+        return run_helper(command)
 
     if name == "fetch_eurostat":
         command = [
@@ -314,7 +364,7 @@ def call_tool(name: str, raw_arguments: str) -> str:
             command.extend(["--time", str(time_value)])
         return run_helper(command)
 
-    if name in {"create_scatter", "configure_chart"}:
+    if name in {"create_scatter", "configure_chart", "select_result"}:
         return json.dumps(
             {
                 "accepted": True,
@@ -362,6 +412,53 @@ def text_content(value: Any) -> str:
     return ""
 
 
+def legacy_tool_calls(value: Any, id_prefix: str = "legacy") -> list[dict[str, Any]]:
+    """Normalize the XML-like tool syntax emitted by some OpenRouter providers."""
+    content = text_content(value).replace("\\_", "_")
+    blocks = re.findall(r"<tool_call>(.*?)</tool_call>", content, flags=re.DOTALL | re.IGNORECASE)
+    if not blocks:
+        return []
+    allowed = {tool["function"]["name"] for tool in TOOLS}
+    calls: list[dict[str, Any]] = []
+    for index, block in enumerate(blocks, start=1):
+        name_match = re.match(r"\s*([a-zA-Z][a-zA-Z0-9_]*)", block)
+        if not name_match or name_match.group(1) not in allowed:
+            return []
+        arguments: dict[str, Any] = {}
+        pairs = re.findall(
+            r"<arg_key>\s*(.*?)\s*</arg_key>\s*"
+            r"<arg_value>\s*(.*?)\s*</arg_value>",
+            block,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        for raw_key, raw_value in pairs:
+            key = re.sub(r"\s+", "", raw_key)
+            if not key:
+                return []
+            value = raw_value.strip()
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                decoded = value
+            arguments[key] = decoded
+        calls.append(
+            {
+                "id": f"{id_prefix}-{index}",
+                "type": "function",
+                "function": {
+                    "name": name_match.group(1),
+                    "arguments": json.dumps(arguments, ensure_ascii=False),
+                },
+            }
+        )
+    return calls
+
+
+def contains_tool_markup(value: Any) -> bool:
+    content = text_content(value).replace("\\_", "_").casefold()
+    return "<tool_call" in content or "<arg_key" in content or "<arg_value" in content
+
+
 def tool_arguments(value: Any) -> tuple[str, dict[str, Any]]:
     """Return arguments in both provider-facing JSON and host-facing mapping forms."""
     if isinstance(value, dict):
@@ -405,6 +502,9 @@ def tool_call_reason(
     if name == "configure_chart":
         purpose = str(arguments.get("purpose") or "the requested comparison")
         return f"Choose a readable chart for {purpose}."
+    if name == "select_result":
+        result_id = str(arguments.get("result_id") or "the requested data")
+        return f"Publish {result_id} as the data supporting this answer."
     return f"Run {name.replace('_', ' ')} to support the answer."
 
 
@@ -558,23 +658,16 @@ def _chart_intent(rows: list[dict[str, Any]], title: str) -> dict[str, Any]:
     preferred_series = _preferred_dimension(dimension_fields)
 
     if time_field and len(time_values) > 1:
+        unit_values = _unique_values(rows, "unit_label")
+        y_label = str(unit_values[0]) if len(unit_values) == 1 else "Value"
         choice = {
             "purpose": "trend",
             "type": "line",
             "x": time_field,
             "y": "value",
             "series": preferred_series,
-        }
-        return _validated_chart_choice(rows, title, choice) or {"type": "none"}
-
-    category = preferred_series
-    if category:
-        choice = {
-            "purpose": "comparison",
-            "type": "bar",
-            "orientation": "horizontal",
-            "x": category,
-            "y": "value",
+            "x_label": _column_label(time_field),
+            "y_label": y_label,
         }
         return _validated_chart_choice(rows, title, choice) or {"type": "none"}
     return {"type": "none"}
@@ -1228,15 +1321,34 @@ def response_result(
     chart_choice: dict[str, Any] | None = None,
     composed_result: dict[str, Any] | None = None,
     fetch_records: list[dict[str, Any]] | None = None,
+    selected_result_id: str | None = None,
 ) -> dict[str, Any] | None:
+    records = fetch_records or ([fetch_record] if fetch_record else [])
     if composed_result:
         result = reuse_context_result(composed_result, chart_choice)
-    elif fetch_record:
-        result = build_structured_result(fetch_record, chart_choice)
-    else:
+    elif selected_result_id == "context":
         result = reuse_context_result(context_result, chart_choice)
+    else:
+        selected_fetch = (
+            next(
+                (
+                    record
+                    for record in records
+                    if str(record.get("result_id") or "") == selected_result_id
+                ),
+                None,
+            )
+            if selected_result_id
+            else None
+        )
+        if selected_fetch:
+            result = build_structured_result(selected_fetch, chart_choice)
+        elif selected_result_id is None and len(records) == 1:
+            result = build_structured_result(records[0], chart_choice)
+        else:
+            result = None
 
-    source_tables = build_source_tables(fetch_records)
+    source_tables = build_source_tables(records)
     if result and source_tables:
         result["source_tables"] = source_tables
         result["sources"] = [table["dataset"] for table in source_tables]
@@ -1292,6 +1404,9 @@ If the user provides an exact dataset code, inspect it directly without searchin
 Do not repeat a tool call with the same arguments. After a fetch returns zero rows or invalid filters, correct the filters from the inspected dimension codes; do not restart dataset search.
 For every tool call, set reason to one brief user-facing sentence describing what the call will retrieve or verify. Keep it under 160 characters and do not expose hidden chain-of-thought.
 The request may include a reusable structured result from the most recent chart. When it does, answer follow-up questions from those exact rows without calling search_eurostat, inspect_dimensions, or fetch_eurostat again. Fetch new data only when the user explicitly requests a different dataset, filters, geography, time range, or facts that are not present in the reusable rows.
+Reusable context is not published automatically. For an ordinary text-only follow-up, answer from it without selecting it. When the user explicitly asks to show, reuse, or re-chart the previous data, call select_result with result_id=context or call configure_chart, which selects that context after validation.
+When requested category labels may be outside the dimension samples, pass the user's region, unit, product, or indicator labels in inspect_dimensions.matches. Use the returned complete-category matches instead of guessing codes. For generic solar electricity generation, use solar photovoltaic when no aggregate solar-electricity category exists, and state that assumption; do not substitute solar thermal.
+Every successful fetch returns an opaque result_id. One successful fetch is published automatically. After multiple successful fetches, call select_result with the result_id that supports the final answer. Do not assume the last fetch is the intended result.
 The host selects a safe default chart automatically. After rows are available, call configure_chart when the user requests a particular visualization or modification, or when the question's analytical purpose makes a richer chart materially clearer. Use type=auto with purpose when the host should resolve the best compatible chart. A promise in prose does not modify the chart: only describe a chart change after configure_chart returns accepted=true.
 For a relationship or correlation between measures from two datasets, fetch the same geography and statistical period from both datasets, filter each fetch to one numeric observation per geography-period, and then call create_scatter. Do not say you made the cross-dataset scatter plot unless create_scatter returned accepted=true. The joined scatter result also supplies the paired two-measure table. You may then call configure_chart to add a trendline, labels, sizing, or another compatible modification.
 The host application satisfies the skill's table requirement by rendering the fetched observations as an interactive table, so do not repeat them as a Markdown table. When values come from multiple datasets, the host renders every distinct source dataset as its own expandable table in addition to any joined table. Give the interpretation, important caveats, dataset code, and filters in concise prose.
@@ -1331,14 +1446,21 @@ The host application satisfies the skill's table requirement by rendering the fe
     return messages
 
 
-def run(payload: dict[str, Any]) -> dict[str, Any]:
+def run(
+    payload: dict[str, Any],
+    chat_client: Any = None,
+    tool_executor: Any = None,
+) -> dict[str, Any]:
     model = payload.get("model") or "openai/gpt-4.1-mini"
     context_result = payload.get("context_result")
     messages = build_messages(payload)
+    chat = chat_client or openrouter_chat
+    execute_tool = tool_executor or call_tool
     last_fetch: dict[str, Any] | None = None
     fetch_records: list[dict[str, Any]] = []
     composed_result: dict[str, Any] | None = None
     chart_choice: dict[str, Any] | None = None
+    selected_result_id: str | None = None
     tool_call_count = 0
     tool_call_details: list[dict[str, Any]] = []
     tool_counts: dict[str, int] = {}
@@ -1347,18 +1469,38 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     force_final = False
 
     for _ in range(MAX_TOOL_ROUNDS):
-        response = openrouter_chat(model, messages, [] if force_final else None)
+        response = chat(model, messages, [] if force_final else None)
         message = response["choices"][0]["message"]
         tool_calls = message.get("tool_calls") or []
         if not tool_calls:
+            tool_calls = legacy_tool_calls(message.get("content"), f"legacy-{tool_call_count + 1}")
+            if tool_calls:
+                message = {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": tool_calls,
+                }
+            elif contains_tool_markup(message.get("content")):
+                return {
+                    "answer": (
+                        "I could not safely interpret the model's tool request. "
+                        "Please try the request again."
+                    ),
+                    "result": None,
+                    "tool_calls": tool_call_count,
+                    "tool_call_details": tool_call_details,
+                }
+        if not tool_calls:
+            answer = text_content(message.get("content")).strip()
             return {
-                "answer": text_content(message.get("content")).strip(),
+                "answer": answer or "I could not complete the Eurostat request.",
                 "result": response_result(
                     last_fetch,
                     context_result,
                     chart_choice,
                     composed_result,
                     fetch_records,
+                    selected_result_id,
                 ),
                 "tool_calls": tool_call_count,
                 "tool_call_details": tool_call_details,
@@ -1375,7 +1517,9 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             function_name = str(function.get("name") or "unknown_tool")
             fingerprint = _call_fingerprint(function_name, parsed_arguments)
 
-            if fingerprint in executed_outputs:
+            if function_name not in {"configure_chart", "create_scatter", "select_result"} and (
+                fingerprint in executed_outputs
+            ):
                 messages.append(
                     {
                         "role": "tool",
@@ -1439,6 +1583,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 if candidate:
                     composed_result = candidate
                     chart_choice = None
+                    selected_result_id = None
                     tool_output = json.dumps(
                         {
                             "accepted": True,
@@ -1454,14 +1599,84 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                         "ERROR: Could not create paired scatter rows. Confirm both datasets were "
                         "fetched and each has one numeric observation for every requested join key."
                     )
-            elif function_name == "configure_chart":
-                current_result = response_result(
-                    last_fetch,
-                    context_result,
+            elif function_name == "select_result":
+                requested_result_id = str(parsed_arguments.get("result_id") or "")
+                selected_fetch = next(
+                    (
+                        record
+                        for record in fetch_records
+                        if record.get("result_id") == requested_result_id
+                    ),
                     None,
-                    composed_result,
-                    fetch_records,
                 )
+                context_rows = (
+                    context_result.get("rows")
+                    if isinstance(context_result, dict)
+                    else None
+                )
+                if requested_result_id == "context" and isinstance(context_rows, list) and context_rows:
+                    selected_result_id = "context"
+                    chart_choice = None
+                    composed_result = None
+                    tool_output = json.dumps(
+                        {
+                            "accepted": True,
+                            "result_id": "context",
+                            "message": "The reusable previous result is selected.",
+                        }
+                    )
+                elif selected_fetch:
+                    selected_result_id = requested_result_id
+                    chart_choice = None
+                    composed_result = None
+                    tool_output = json.dumps(
+                        {
+                            "accepted": True,
+                            "result_id": requested_result_id,
+                            "dataset": str(
+                                (selected_fetch.get("arguments") or {}).get("dataset") or ""
+                            ),
+                            "message": "The requested fetch is selected for publication.",
+                        }
+                    )
+                else:
+                    available_ids = [
+                        str(record.get("result_id"))
+                        for record in fetch_records
+                        if record.get("result_id")
+                    ]
+                    if isinstance(context_rows, list) and context_rows:
+                        available_ids.append("context")
+                    tool_output = (
+                        f"ERROR: Unknown result_id {requested_result_id!r}. "
+                        f"Available result IDs: {', '.join(available_ids) or 'none'}."
+                    )
+            elif function_name == "configure_chart":
+                if (
+                    not fetch_records
+                    and not composed_result
+                    and selected_result_id is None
+                    and isinstance(context_result, dict)
+                ):
+                    current_result = reuse_context_result(context_result)
+                    current_result_id = "context"
+                else:
+                    current_result = response_result(
+                        last_fetch,
+                        context_result,
+                        None,
+                        composed_result,
+                        fetch_records,
+                        selected_result_id,
+                    )
+                    if composed_result:
+                        current_result_id = None
+                    elif selected_result_id:
+                        current_result_id = selected_result_id
+                    elif len(fetch_records) == 1:
+                        current_result_id = str(fetch_records[0].get("result_id") or "")
+                    else:
+                        current_result_id = None
                 current_rows = current_result.get("rows") if current_result else None
                 current_dataset = current_result.get("dataset") if current_result else None
                 current_title = (
@@ -1476,6 +1691,8 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 )
                 if candidate:
                     chart_choice = candidate
+                    if current_result_id:
+                        selected_result_id = current_result_id
                     tool_output = json.dumps(
                         {
                             "accepted": True,
@@ -1493,7 +1710,10 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                         "rows, or use type=auto with the intended analytical purpose."
                     )
             else:
-                tool_output = call_tool(function_name, raw_arguments)
+                try:
+                    tool_output = execute_tool(function_name, raw_arguments)
+                except Exception as exc:
+                    tool_output = f"ERROR: {function_name} failed safely: {exc}"
 
             parsed_output: dict[str, Any] | None = None
             if function_name == "fetch_eurostat" and not tool_output.startswith("ERROR:"):
@@ -1507,6 +1727,10 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     if isinstance(rows, list) and not rows:
                         tool_output = _zero_row_error(parsed_arguments)
                         parsed_output = None
+                    elif isinstance(rows, list):
+                        result_id = f"fetch-{len(fetch_records) + 1}"
+                        parsed_output = {"result_id": result_id, **parsed_output}
+                        tool_output = json.dumps(parsed_output, ensure_ascii=False)
 
             detail["duration_ms"] = max(0, round((time.perf_counter() - started_at) * 1000))
             detail["status"] = (
@@ -1524,10 +1748,15 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                 if catalog and dataset:
                     dimension_catalogs[dataset] = catalog
             if function_name == "fetch_eurostat" and parsed_output is not None:
-                last_fetch = {"arguments": parsed_arguments, "output": parsed_output}
+                last_fetch = {
+                    "result_id": parsed_output["result_id"],
+                    "arguments": parsed_arguments,
+                    "output": parsed_output,
+                }
                 fetch_records.append(last_fetch)
                 composed_result = None
                 chart_choice = None
+                selected_result_id = None
             messages.append(
                 {
                     "role": "tool",
@@ -1549,6 +1778,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             chart_choice,
             composed_result,
             fetch_records,
+            selected_result_id,
         ),
         "tool_calls": tool_call_count,
         "tool_call_details": tool_call_details,

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "gdp_index_retry",
+  "tags": ["gdp", "chart", "retry", "smoke"],
+  "turns": [
+    {
+      "prompt": "Give me a graph comparing the evolution of the GDP of France, Germany, NL, Spain, indexing on the year 2005",
+      "expect": {
+        "result": "null",
+        "tools": [],
+        "answer_contains": ["try"]
+      }
+    },
+    {
+      "prompt": "try again",
+      "expect": {
+        "result": "present",
+        "dataset": "nama_10_gdp",
+        "filters": {
+          "geo": ["FR", "DE", "NL", "ES"],
+          "unit": ["CLV_I05"],
+          "na_item": ["B1GQ"]
+        },
+        "row_count": 8,
+        "required_rows": [
+          {"geo": "FR", "unit": "CLV_I05"},
+          {"geo": "DE", "unit": "CLV_I05"},
+          {"geo": "NL", "unit": "CLV_I05"},
+          {"geo": "ES", "unit": "CLV_I05"}
+        ],
+        "numeric": [{"field": "value", "op": "all_nonzero"}],
+        "chart": {
+          "type": "line",
+          "series": "geo_label",
+          "y_label": "Chain linked volumes, index 2005=100"
+        },
+        "tools": ["inspect_dimensions", "fetch_eurostat", "configure_chart"],
+        "no_tool_errors": true,
+        "answer_contains": ["2005=100"],
+        "provenance": true
+      }
+    }
+  ]
+}

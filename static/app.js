@@ -18,7 +18,7 @@ import {
   setInFlightLabel,
   updateInFlightToolCall,
 } from "./in_flight_state.js";
-import { createChartSection, finalizeChartViews } from "./chart.js?v=20260727-3";
+import { createChartSection, finalizeChartViews } from "./chart.js?v=20260731-1";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 
 const PAGE_SIZE = 12;

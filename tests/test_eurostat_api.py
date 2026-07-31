@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.eurostat_api import build_url, coords_from_index, flatten, rank_catalog
+from scripts.eurostat_api import (
+    build_url,
+    coords_from_index,
+    flatten,
+    match_dimension_categories,
+    rank_catalog,
+)
 
 
 class EurostatApiTests(unittest.TestCase):
@@ -97,6 +103,52 @@ class EurostatApiTests(unittest.TestCase):
         results = rank_catalog(rows, "nama_10_pc", 5)
 
         self.assertEqual(results[0]["code"], "nama_10_pc")
+
+    def test_complete_category_matching_handles_accents_and_misspellings(self) -> None:
+        data = {
+            "id": ["geo"],
+            "dimension": {
+                "geo": {
+                    "category": {
+                        "index": {"DE1": 0, "ES41": 1},
+                        "label": {
+                            "DE1": "Baden-Württemberg",
+                            "ES41": "Castilla y León",
+                        },
+                    }
+                }
+            },
+        }
+
+        matches = match_dimension_categories(
+            data,
+            ["Baden-Wurttemberg", "Castille and Léon"],
+        )
+
+        self.assertEqual(matches[0]["categories"][0]["code"], "DE1")
+        self.assertEqual(matches[1]["categories"][0]["code"], "ES41")
+
+    def test_complete_category_matching_exposes_solar_variants(self) -> None:
+        data = {
+            "id": ["siec"],
+            "dimension": {
+                "siec": {
+                    "category": {
+                        "index": {"RA410": 0, "RA420": 1, "RA500": 2},
+                        "label": {
+                            "RA410": "Solar thermal",
+                            "RA420": "Solar photovoltaic",
+                            "RA500": "Tide, wave, ocean",
+                        },
+                    }
+                }
+            },
+        }
+
+        matches = match_dimension_categories(data, ["solar generation"])
+        codes = [item["code"] for item in matches[0]["categories"]]
+
+        self.assertEqual(set(codes[:2]), {"RA420", "RA410"})
 
 
 if __name__ == "__main__":

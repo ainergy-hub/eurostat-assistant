@@ -3,6 +3,10 @@
 Choose the chart from the analytical relationship and the validated row shape. Prefer
 `type=auto` with a `purpose` unless the user explicitly names a compatible chart.
 
+Without an explicit visualization request, automatically chart only a clean multi-period trend.
+Return a table without a chart for single-period comparisons, matrices, input-output tables, and
+results whose period-plus-series grain is not unique.
+
 | Purpose | Use | Required row shape |
 |---|---|---|
 | `trend` | line; area only for totals or accumulation | ordered period, numeric measure |
@@ -27,4 +31,6 @@ Apply these guardrails:
 - Request a log scale only for strictly positive values.
 - Add a linear trendline only to a scatter plot.
 - Prefer hover labels; use always-visible labels only when the chart remains readable.
+- Give every chart a neutral title and reader-facing axis labels; include the unit on the numeric
+  axis when one unit applies to all plotted rows.
 - Do not automatically request pie, donut, radar, dual-axis, or geographic charts.

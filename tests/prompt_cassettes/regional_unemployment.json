@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "scenario_id": "regional_unemployment",
+  "turns": [
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-countries",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"une_rt_a\",\"params\":[\"freq=A\",\"unit=PC_ACT\",\"sex=T\",\"age=Y15-74\",\"geo=ES,PT\"],\"last_time_period\":8}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "Spain remained above Portugal across the eight-year period, using [une_rt_a](https://ec.europa.eu/eurostat/databrowser/view/une_rt_a/default/table?lang=en)."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "une_rt_a",
+            "params": ["freq=A", "unit=PC_ACT", "sex=T", "age=Y15-74", "geo=ES,PT"],
+            "last_time_period": 8
+          },
+          "output": {
+            "metadata": {
+              "label": "Unemployment by sex and age – annual data",
+              "updated": "2026-07-01T00:00:00+0200",
+              "total_rows": 16,
+              "returned_rows": 16,
+              "truncated": false
+            },
+            "rows": [
+              {"value": 15.3, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2018", "time_label": "2018"},
+              {"value": 14.1, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2019", "time_label": "2019"},
+              {"value": 15.5, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2020", "time_label": "2020"},
+              {"value": 14.8, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2021", "time_label": "2021"},
+              {"value": 12.9, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2022", "time_label": "2022"},
+              {"value": 12.2, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2023", "time_label": "2023"},
+              {"value": 11.4, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2024", "time_label": "2024"},
+              {"value": 10.8, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "ES", "geo_label": "Spain", "time": "2025", "time_label": "2025"},
+              {"value": 7.0, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2018", "time_label": "2018"},
+              {"value": 6.6, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2019", "time_label": "2019"},
+              {"value": 7.1, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2020", "time_label": "2020"},
+              {"value": 6.6, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2021", "time_label": "2021"},
+              {"value": 6.1, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2022", "time_label": "2022"},
+              {"value": 6.5, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2023", "time_label": "2023"},
+              {"value": 6.4, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2024", "time_label": "2024"},
+              {"value": 6.2, "unit": "PC_ACT", "unit_label": "Percentage of active population", "geo": "PT", "geo_label": "Portugal", "time": "2025", "time_label": "2025"}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "<tool_call>inspect_dimensions<arg_key>dataset</arg_key><arg_value>lfst_r_lfu3rt</arg_value><arg_key>matches</arg_key><arg_value>[\"Baden-Württemberg\",\"Castille and Léon\"]</arg_value></tool_call>"
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-regions",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"lfst_r_lfu3rt\",\"params\":[\"freq=A\",\"isced11=TOTAL\",\"sex=T\",\"age=Y15-74\",\"unit=PC\",\"geo=DE1,ES41\"],\"time\":[\"2018\",\"2019\",\"2020\",\"2021\",\"2022\",\"2023\",\"2024\",\"2025\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "Castilla y León had the higher unemployment rate throughout, while its gap with Baden-Württemberg narrowed by 2025. Source: [lfst_r_lfu3rt](https://ec.europa.eu/eurostat/databrowser/view/lfst_r_lfu3rt/default/table?lang=en)."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "inspect_dimensions",
+          "arguments": {
+            "dataset": "lfst_r_lfu3rt",
+            "matches": ["Baden-Württemberg", "Castille and Léon"]
+          },
+          "output": {
+            "dataset": "lfst_r_lfu3rt",
+            "label": "Unemployment rates by educational attainment level and NUTS 2 region",
+            "dimensions": [
+              {"id": "freq", "size": 1, "sample_categories": [{"code": "A", "label": "Annual"}]},
+              {"id": "isced11", "size": 1, "sample_categories": [{"code": "TOTAL", "label": "All ISCED 2011 levels"}]},
+              {"id": "sex", "size": 1, "sample_categories": [{"code": "T", "label": "Total"}]},
+              {"id": "age", "size": 1, "sample_categories": [{"code": "Y15-74", "label": "From 15 to 74 years"}]},
+              {"id": "unit", "size": 1, "sample_categories": [{"code": "PC", "label": "Percentage"}]},
+              {"id": "geo", "size": 512, "sample_categories": [{"code": "EU27_2020", "label": "European Union"}]}
+            ],
+            "matches": [
+              {"query": "Baden-Württemberg", "categories": [{"dimension": "geo", "code": "DE1", "label": "Baden-Württemberg"}]},
+              {"query": "Castille and Léon", "categories": [{"dimension": "geo", "code": "ES41", "label": "Castilla y León"}]}
+            ]
+          }
+        },
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "lfst_r_lfu3rt",
+            "params": ["freq=A", "isced11=TOTAL", "sex=T", "age=Y15-74", "unit=PC", "geo=DE1,ES41"],
+            "time": ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+          },
+          "output": {
+            "metadata": {
+              "label": "Unemployment rates by educational attainment level and NUTS 2 region",
+              "updated": "2026-06-30T11:00:00+0200",
+              "total_rows": 16,
+              "returned_rows": 16,
+              "truncated": false
+            },
+            "rows": [
+              {"value": 2.5, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2018", "time_label": "2018"},
+              {"value": 2.4, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2019", "time_label": "2019"},
+              {"value": 3.2, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2020", "time_label": "2020"},
+              {"value": 3.2, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2021", "time_label": "2021"},
+              {"value": 2.7, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2022", "time_label": "2022"},
+              {"value": 2.6, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2023", "time_label": "2023"},
+              {"value": 3.0, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2024", "time_label": "2024"},
+              {"value": 3.3, "unit": "PC", "unit_label": "Percentage", "geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2025", "time_label": "2025"},
+              {"value": 12.1, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2018", "time_label": "2018"},
+              {"value": 11.6, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2019", "time_label": "2019"},
+              {"value": 12.1, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2020", "time_label": "2020"},
+              {"value": 11.6, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2021", "time_label": "2021"},
+              {"value": 9.9, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2022", "time_label": "2022"},
+              {"value": 9.7, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2023", "time_label": "2023"},
+              {"value": 9.4, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2024", "time_label": "2024"},
+              {"value": 8.6, "unit": "PC", "unit_label": "Percentage", "geo": "ES41", "geo_label": "Castilla y León", "time": "2025", "time_label": "2025"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

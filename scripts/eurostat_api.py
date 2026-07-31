@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import difflib
 import io
 import json
 import re
 import sys
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -239,7 +241,68 @@ def categories(dataset: dict[str, Any], dim_id: str) -> list[dict[str, Any]]:
     return [{"code": code, "label": labels.get(code, code), "index": idx} for code, idx in ordered]
 
 
-def dimensions(dataset: str) -> None:
+def _search_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value.casefold())
+    without_marks = "".join(
+        character for character in normalized if not unicodedata.combining(character)
+    )
+    return " ".join(re.findall(r"[a-z0-9]+", without_marks))
+
+
+def match_dimension_categories(
+    data: dict[str, Any],
+    queries: list[str],
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """Find bounded label/code matches across every complete dataset dimension."""
+    results: list[dict[str, Any]] = []
+    for raw_query in queries:
+        query = raw_query.strip()
+        normalized_query = _search_text(query)
+        if not normalized_query:
+            continue
+        query_tokens = set(normalized_query.split())
+        candidates: list[tuple[float, str, str, str]] = []
+        for dim_id in data.get("id", []):
+            for item in categories(data, dim_id):
+                code = str(item["code"])
+                label = str(item["label"])
+                normalized_code = _search_text(code)
+                normalized_label = _search_text(label)
+                label_tokens = set(normalized_label.split())
+                overlap = len(query_tokens & label_tokens) / max(1, len(query_tokens))
+                similarity = difflib.SequenceMatcher(
+                    None,
+                    normalized_query,
+                    normalized_label,
+                ).ratio()
+                contains = normalized_query in normalized_label or normalized_label in normalized_query
+                score = max(
+                    1.0 if normalized_query == normalized_code else 0.0,
+                    0.96 if normalized_query == normalized_label else 0.0,
+                    0.88 if contains else 0.0,
+                    overlap * 0.72 + similarity * 0.28,
+                )
+                if score >= 0.44:
+                    candidates.append((score, str(dim_id), code, label))
+        candidates.sort(key=lambda item: (-item[0], item[1], item[3], item[2]))
+        results.append(
+            {
+                "query": query,
+                "categories": [
+                    {
+                        "dimension": dim_id,
+                        "code": code,
+                        "label": label,
+                    }
+                    for _, dim_id, code, label in candidates[:limit]
+                ],
+            }
+        )
+    return results
+
+
+def dimensions(dataset: str, matches: list[str] | None = None) -> None:
     data = get_json(build_url(dataset, [("lastTimePeriod", "1")]))
     result = {
         "dataset": dataset,
@@ -257,6 +320,8 @@ def dimensions(dataset: str) -> None:
                 "sample_categories": cats[:30],
             }
         )
+    if matches:
+        result["matches"] = match_dimension_categories(data, matches)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 
@@ -354,6 +419,15 @@ def main() -> None:
 
     dims = sub.add_parser("dimensions", help="Inspect dataset dimensions with one recent period.")
     dims.add_argument("dataset")
+    dims.add_argument(
+        "--match",
+        action="append",
+        default=[],
+        help=(
+            "Find matching category labels or codes across complete dimensions. "
+            "Repeat for multiple requested labels."
+        ),
+    )
 
     fetch_parser = sub.add_parser("fetch", help="Fetch and flatten a filtered dataset slice.")
     fetch_parser.add_argument("dataset")
@@ -372,7 +446,7 @@ def main() -> None:
     if args.command == "search":
         search_catalog(args.query, args.limit, args.cache_file)
     elif args.command == "dimensions":
-        dimensions(args.dataset)
+        dimensions(args.dataset, args.match)
     elif args.command == "fetch":
         fetch(args)
 

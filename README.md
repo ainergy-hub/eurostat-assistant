@@ -21,7 +21,8 @@ Eurostat Lens can:
 - fetch and flatten filtered JSON-stat 2.0 observations;
 - preserve the dataset code, title, applied filters, update date, flags, and reproducible API URL;
 - return up to 500 observations in a sortable, filterable table with CSV export;
-- select and render line, area, grouped/stacked/normalized bar, dot, scatter/bubble,
+- automatically render clean multi-period trends and explicitly requested line, area,
+  grouped/stacked/normalized bar, dot, scatter/bubble,
   heatmap, histogram, and box-plot charts;
 - safely modify charts with sorting, top-N filtering, orientation, labels, linear
   trendlines, zero-baseline control, and linear or logarithmic scales;
@@ -29,6 +30,8 @@ Eurostat Lens can:
 - pair two filtered measures by shared geography/period keys for correlation scatter plots;
 - stream tool-call status, arguments, duration, and bounded result previews to the app;
 - perform bounded candidate discovery before asking about ambiguous measures and limit repeated searches, inspections, and fetches;
+- search complete dimension categories for requested labels, including fuzzy accent-insensitive
+  region, unit, indicator, and product matching;
 - keep device-native investigation history in IndexedDB without a fixed chat-count limit;
 - carry recent conversational context and a compact summary into follow-up questions;
 - reuse the most recent chart's validated rows for follow-ups without fetching the same API data again.
@@ -155,8 +158,9 @@ public so Railway can verify a locked deployment, but it exposes only service re
 3. The model can use five allow-listed tools: dataset search, dimension inspection, bounded fetch,
    paired scatter composition, and validated chart configuration.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
-5. The host preserves the latest fetched slice as structured rows and provenance, validates any
-   model-selected chart fields, and derives a safe default chart when needed.
+5. The host assigns each successful fetch a result ID, publishes a single fetch automatically or
+   an explicitly selected fetch after multiple attempts, validates chart fields, and derives a
+   conservative trend chart when appropriate.
 6. FastAPI validates the public result before the browser renders it. The browser does not execute
    model-authored HTML or JavaScript.
 
@@ -173,8 +177,10 @@ it, and the browser's normal storage quota still applies. The agent receives the
 messages, a summary of at most 2,400 characters, and (when available) the latest chart's validated
 result.
 The structured result is treated as reusable Eurostat tool output, so follow-ups that are answerable
-from those rows do not repeat dataset search, dimension inspection, or the data fetch. A different
-dataset, filter, geography, time range, or unavailable fact still triggers a new lookup.
+from those rows do not repeat dataset search, dimension inspection, or the data fetch. Reusable
+context is not automatically republished: text-only and unavailable-data answers return no new
+result, while explicit table/chart reuse selects the previous result. A different dataset, filter,
+geography, time range, or unavailable fact still triggers a new lookup.
 
 The agent executes at most 12 unique tools per request, with smaller per-tool ceilings. Identical
 calls reuse their earlier output, invalid complete-dimension filters are rejected before an API
@@ -268,11 +274,66 @@ node tests/chart.test.mjs
 node tests/chat_state.test.mjs
 node tests/chat_store.test.mjs
 node tests/markdown_renderer.test.mjs
+uv run python -m tests.prompt_regression replay
 ```
 
 The automated suite uses recorded JSON-stat-shaped fixtures and does not require API keys. A small,
 filtered live request is useful as a separate canary because Eurostat always exposes the latest
 dataset version.
+
+### Prompt regression scenarios
+
+Prompt regressions are stored as paired files:
+
+- `tests/prompt_scenarios/<id>.json` contains prompts, tags, and semantic expectations.
+- `tests/prompt_cassettes/<id>.json` contains recorded model responses and Eurostat tool outputs.
+
+Add a scenario by copying this minimal shape:
+
+```json
+{
+  "schema_version": 1,
+  "id": "population_trend",
+  "tags": ["population", "smoke"],
+  "turns": [
+    {
+      "prompt": "Compare population in Germany and France since 2020",
+      "expect": {
+        "result": "present",
+        "dataset": "demo_pjan",
+        "filters": {"geo": ["DE", "FR"]},
+        "row_count": {"min": 2},
+        "chart": {"type": "line", "series": "geo_label"},
+        "no_tool_errors": true,
+        "provenance": true
+      }
+    }
+  ]
+}
+```
+
+Record it once with live services, inspect the generated cassette, then replay it offline:
+
+```bash
+uv run python -m tests.prompt_regression record population_trend
+uv run python -m tests.prompt_regression replay population_trend
+```
+
+Use `record <id> --update` to intentionally refresh an existing cassette. Run live semantic checks
+without changing cassettes with:
+
+```bash
+uv run python -m tests.prompt_regression live --tag smoke
+```
+
+Supported expectations include result presence, dataset codes, forbidden datasets, exact filters,
+row counts or ranges, required row subsets, row-key uniqueness, numeric non-zero/min/max checks,
+chart fields, exact tool order, tool-error rejection, answer contains/excludes/regex checks,
+warning text, and provenance. Raw tool markup and duplicate tool calls are rejected by default.
+Replay failures identify the turn, first failed assertion, and a one-scenario rerun command.
+
+Recording strips reasoning fields and does not capture credentials or HTTP headers. Cassettes contain
+public Eurostat observations and generated answer text, so review changes before committing them.
 
 ## License
 

@@ -91,6 +91,27 @@ test("line charts translate the public chart contract into Vega-Lite", () => {
   assert.equal(spec.params, undefined);
 });
 
+test("reader-facing axis labels replace internal field names", () => {
+  const spec = buildVegaLiteSpec(
+    [
+      { time_label: "2024", value: 12.5, geo_label: "France" },
+      { time_label: "2025", value: 13.1, geo_label: "France" },
+    ],
+    {
+      type: "line",
+      x: "time_label",
+      y: "value",
+      series: "geo_label",
+      x_label: "Period",
+      y_label: "Percentage",
+    },
+  );
+
+  assert.equal(spec.encoding.x.axis.title, "Period");
+  assert.equal(spec.encoding.y.axis.title, "Percentage");
+  assert.equal(spec.encoding.color.legend, null);
+});
+
 test("multi-series legends toggle series highlighting", () => {
   const spec = buildVegaLiteSpec(
     [
