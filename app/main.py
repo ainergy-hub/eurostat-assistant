@@ -38,6 +38,7 @@ SESSION_COOKIE = "eurostat_lens_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
 APP_VERSION = "0.3.0"
 DEFAULT_MODEL_OPTIONS = (
+    "openai/gpt-5.6-luna-pro",
     "openai/gpt-4.1-mini",
     "openai/gpt-4.1",
     "moonshotai/kimi-k2-thinking",
@@ -96,7 +97,11 @@ async def require_app_unlock(request: Request, call_next):
 
 
 def _model_name() -> str:
-    model = os.getenv("OPENROUTER_MODEL") or os.getenv("OPENAI_MODEL") or "openai/gpt-4.1-mini"
+    model = (
+        os.getenv("OPENROUTER_MODEL")
+        or os.getenv("OPENAI_MODEL")
+        or "openai/gpt-5.6-luna-pro"
+    )
     if "/" not in model:
         return f"openai/{model}"
     return model

@@ -21,7 +21,7 @@ if [ -z "${OPENROUTER_MODEL:-}" ] && [ -n "${OPENAI_MODEL:-}" ]; then
 fi
 
 if [ -z "${OPENROUTER_MODEL:-}" ]; then
-  export OPENROUTER_MODEL="openai/gpt-4.1-mini"
+  export OPENROUTER_MODEL="openai/gpt-5.6-luna-pro"
 fi
 
 case "$OPENROUTER_MODEL" in

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import _model_name, app
 
 
 class AppLockTests(unittest.TestCase):
@@ -57,6 +57,7 @@ class AppLockTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(data["default_model"], [model["id"] for model in data["models"]])
+        self.assertIn("openai/gpt-5.6-luna-pro", [model["id"] for model in data["models"]])
         self.assertIn("moonshotai/kimi-k2-thinking", [model["id"] for model in data["models"]])
         self.assertIn("fetch_eurostat", [tool["name"] for tool in data["tools"]])
         self.assertIn("publish_result", [tool["name"] for tool in data["tools"]])
@@ -65,6 +66,10 @@ class AppLockTests(unittest.TestCase):
         self.assertEqual(data["limits"]["eurostat_response_bytes"], 8_000_000)
         self.assertNotIn("agent_runtime", data["runtime"])
         self.assertEqual(data["runtime"]["history"], "This browser (IndexedDB)")
+
+    def test_default_model_is_gpt_5_6_luna_pro(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(_model_name(), "openai/gpt-5.6-luna-pro")
 
     def test_unknown_model_is_rejected_before_starting_an_agent(self) -> None:
         self.client.post(

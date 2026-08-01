@@ -175,7 +175,11 @@ class ReplayTools:
 
 
 def _model_name() -> str:
-    model = os.getenv("OPENROUTER_MODEL") or os.getenv("OPENAI_MODEL") or "openai/gpt-4.1-mini"
+    model = (
+        os.getenv("OPENROUTER_MODEL")
+        or os.getenv("OPENAI_MODEL")
+        or "openai/gpt-5.6-luna-pro"
+    )
     return model if "/" in model else f"openai/{model}"
 
 
