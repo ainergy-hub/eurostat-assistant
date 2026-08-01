@@ -36,6 +36,7 @@ MAX_ESTIMATED_CELLS = int(LIMITS["max_estimated_cells"])
 MAX_TIME_PERIODS = int(LIMITS["max_time_periods"])
 MAX_RECENT_MESSAGES = int(LIMITS["max_recent_messages"])
 MAX_SUMMARY_CHARACTERS = int(LIMITS["max_summary_characters"])
+MIN_CATALOG_RESULTS = 12
 TOOL_CALL_LIMITS = {
     str(name): int(limit) for name, limit in LIMITS["tool_call_limits"].items()
 }
@@ -114,7 +115,16 @@ TOOLS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 20,
+                        "description": (
+                            "Requested candidate count. The host returns at least 12 bounded "
+                            "candidates so family tables with the requested category in a "
+                            "dimension are not hidden by literal-title matches."
+                        ),
+                    },
                     "reason": TOOL_REASON_PROPERTY,
                 },
                 "required": ["query"],
@@ -251,12 +261,13 @@ def call_tool(name: str, raw_arguments: str) -> str:
         return f"Invalid JSON arguments: {exc}"
 
     if name == "search_eurostat":
+        requested_limit = int(args.get("limit", MIN_CATALOG_RESULTS))
         return run_helper(
             [
                 "search",
                 str(args["query"]),
                 "--limit",
-                str(min(int(args.get("limit", 5)), 8)),
+                str(max(MIN_CATALOG_RESULTS, min(requested_limit, 20))),
                 "--cache-file",
                 str(CATALOG_CACHE),
             ]
@@ -1034,6 +1045,20 @@ def _unique_row_index(
     return index, duplicates
 
 
+def _aggregate_geography_code(row: dict[str, Any]) -> str | None:
+    code = str(row.get("geo") or "").strip()
+    label = str(row.get("geo_label") or "").casefold()
+    aggregate_labels = (
+        "european union",
+        "euro area",
+        "european economic area",
+        "european free trade association",
+    )
+    if any(marker in label for marker in aggregate_labels) or re.match(r"^(?:EU|EA)\d", code):
+        return code or str(row.get("geo_label") or "aggregate")
+    return None
+
+
 def build_scatter_result(
     fetch_records: list[dict[str, Any]],
     choice: dict[str, Any] | None,
@@ -1077,6 +1102,17 @@ def build_scatter_result(
         return None
     if any(field not in x_rows[0] or field not in y_rows[0] for field in join_on):
         return None
+
+    aggregate_geo_codes: set[str] = set()
+    if "geo" in join_on:
+        for row in [*x_rows, *y_rows]:
+            aggregate_code = _aggregate_geography_code(row)
+            if aggregate_code:
+                aggregate_geo_codes.add(aggregate_code)
+        x_rows = [row for row in x_rows if not _aggregate_geography_code(row)]
+        y_rows = [row for row in y_rows if not _aggregate_geography_code(row)]
+        if not x_rows or not y_rows:
+            return None
 
     x_index, x_duplicates = _unique_row_index(x_rows, join_on)
     y_index, y_duplicates = _unique_row_index(y_rows, join_on)
@@ -1156,6 +1192,11 @@ def build_scatter_result(
     ]
     title = str(choice.get("title") or f"{x_label} vs {y_label}").strip()
     warnings: list[str] = []
+    if aggregate_geo_codes:
+        warnings.append(
+            f"{len(aggregate_geo_codes)} aggregate geographies were omitted from the "
+            "country-level relationship."
+        )
     unmatched = (len(x_index) - len(shared_keys)) + (len(y_index) - len(shared_keys))
     ambiguous = len(x_duplicates) + len(y_duplicates)
     if unmatched:
@@ -1222,6 +1263,28 @@ def build_scatter_result(
         },
         "warnings": warnings,
     }
+
+
+def _paired_chart_choice(
+    candidate_result: dict[str, Any],
+    requested_chart: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply safe style overrides without losing the paired measure axes."""
+    base_chart = candidate_result["chart"]
+    choice = {**base_chart, **requested_chart}
+    choice["type"] = "scatter"
+    choice["purpose"] = "relationship"
+
+    base_axes = {base_chart.get("x"), base_chart.get("y")}
+    requested_axes = {requested_chart.get("x"), requested_chart.get("y")}
+    if (
+        None in base_axes
+        or len(base_axes) != 2
+        or requested_axes != base_axes
+    ):
+        choice["x"] = base_chart.get("x")
+        choice["y"] = base_chart.get("y")
+    return choice
 
 
 def build_structured_result(
@@ -1398,7 +1461,15 @@ Use this chart-selection reference when choosing or modifying a visualization:
 {chart_reference}
 
 Host adaptation: the application renders published observations as interactive tables, including
-one source table per dataset in paired results. Do not duplicate those rows as a Markdown table.
+one source table per dataset in paired results. Do not duplicate those rows as a Markdown table or
+transcribe observation values into prose. Model-visible tool output can be truncated, so never
+invent, interpolate, or infer values or flags that are not visible. Treat the published structured
+result as the sole authoritative observation table. For paired results, do not cite country-level
+examples or values unless the user explicitly asks for them, and do not generalize status flags
+across rows; direct the reader to the rendered tables instead. This is a hard output requirement:
+when the user asks only for the overall relationship, the final answer must not mention any row's
+country or geography by name. Do not restate dataset update timestamps; the structured result
+already exposes them without risking transcription errors.
 Give the interpretation, provenance, filters, assumptions, and important caveats in concise prose.
 For every tool call, set `reason` to one brief user-facing sentence describing what it retrieves or
 verifies; do not expose hidden reasoning.
@@ -1590,10 +1661,14 @@ def run(
                     candidate_result = build_scatter_result(fetch_records, publication_choice)
                     candidate_chart = None
                     if candidate_result and isinstance(requested_chart, dict):
+                        paired_chart_choice = _paired_chart_choice(
+                            candidate_result,
+                            requested_chart,
+                        )
                         candidate_chart = _validated_chart_choice(
                             candidate_result["rows"],
                             candidate_result["dataset"]["title"],
-                            requested_chart,
+                            paired_chart_choice,
                         )
                     if candidate_result and (requested_chart is None or candidate_chart):
                         composed_result = candidate_result

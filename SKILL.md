@@ -10,8 +10,8 @@ description: Find relevant Eurostat datasets and fetch official Eurostat data fo
 Use Eurostat as the authoritative source when the user asks for European official statistics or explicitly asks for Eurostat data.
 
 1. Reuse compatible structured Eurostat rows already present in the conversation. Do not search, inspect, or fetch the same data again.
-2. Identify the requested statistical concept, geography, time range, unit, and comparison grain. Separate details discoverable from Eurostat from preferences only the user can choose.
-3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly. Otherwise run one catalogue search and inspect up to two credible candidate datasets. Pass requested region, unit, product, and indicator labels as dimension matches so codes outside the samples are discovered rather than guessed. Do not fetch observations for competing interpretations.
+2. Identify the requested statistical concept, geography, time range, unit, and comparison grain. Separate details discoverable from Eurostat from preferences only the user can choose. For a relationship between two measures with no geography or period, default to a cross-sectional comparison of the individual countries shared by both datasets in their latest common year. Exclude supranational aggregates, state this reversible assumption, and do not pause to ask for geography or time.
+3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly without a catalogue search. Otherwise run at most one catalogue search per requested measure and inspect the best credible candidate for each measure; inspect a second candidate only when the first is genuinely ambiguous. Pass requested region, unit, product, and indicator labels as dimension matches so codes outside the samples are discovered rather than guessed. Do not fetch observations for competing interpretations.
 4. After discovery, continue when one candidate clearly matches. State and proceed with a reasonable reversible assumption when the remaining ambiguity is minor. Ask one focused question when candidates represent materially different concepts, units, populations, or geographic grains.
 5. Ground clarification questions in the discovery: name the search performed, candidate dataset titles and codes, the relevant differences, and a recommended option when one is a better match.
 6. After the measure is resolved, fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`. Always include an explicit time selection or `last_time_period`; the host rejects unbounded time queries and data cubes above its configured cell and response-size limits.
@@ -21,7 +21,7 @@ Use Eurostat as the authoritative source when the user asks for European officia
 
 Prefer the smallest query that answers the question. Always filter high-cardinality dimensions such as `geo`, `time`, `unit`, `freq`, `sex`, `age`, `nace_r2`, `indic_*`, `siec`, `currency`, or `coicop` before fetching broad data.
 
-Use at most one catalogue search and two dimension inspections for clarification discovery. For resolved measures, use at most two catalogue searches per requested measure. Do not repeat identical tool calls. If two searches do not identify a credible dataset, stop and ask the user to choose from the closest candidates. After a zero-row fetch or invalid filter, correct the filters using the inspected dimension codes instead of restarting dataset search.
+Use at most two catalogue searches total per request and at most one per requested measure. Do not repeat identical tool calls or reformulate a search after its result contains a credible dataset. If the bounded searches do not identify a credible dataset, stop and ask the user to choose from the closest candidates. After a zero-row fetch or invalid filter, correct the filters using the inspected dimension codes instead of restarting dataset search.
 
 ## Quick Start
 
@@ -45,6 +45,29 @@ Search results are only candidates. Choose datasets by matching:
 - whether the table is country-level, regional, annual, quarterly, monthly, or detailed by category.
 
 If several datasets fit, inspect dimensions for each before fetching. If a question needs a concept definition, read `references/eurostat-api.md`.
+
+### Multi-measure relationship questions
+
+For questions asking for the relationship between two measures:
+
+1. Decompose the request into two independently measurable concepts. Decide whether wording such
+   as “X in Y” means a share, amount, rate, or intensity from context and units.
+2. Search once for each concept. Search for the statistical family and denominator, not only the
+   user's literal wording. Eurostat table titles often name a family such as fuels, products,
+   activities, or indicators while the requested numerator is a dimension category inside it.
+   For a requested “share of X in Y”, include terms for *share*, the parent category of X, and Y.
+3. Review the complete bounded candidate list. Do not reject a credible family table because its
+   title omits the requested category. Inspect it with the requested numerator, denominator, unit,
+   geography, and aggregate labels as dimension matches. Use at most two inspections per measure.
+4. Resolve both measures to one observation per intended join key. Apply the same individual
+   geographies and the same explicit period to both fetches, exclude aggregate geographies from a
+   country-level comparison, and use the latest common year when no period was requested.
+5. Fetch each resolved measure once, then publish the two result IDs joined on the shared keys.
+   Use a scatter plot for two numeric measures and describe association rather than causation.
+
+The complete path is bounded to two searches, four inspections, two fetches, and one publication.
+If that budget cannot resolve both measures, ask one focused clarification question instead of
+starting another discovery loop.
 
 Dimension samples are intentionally bounded. Use repeatable `--match` terms (or the
 `inspect_dimensions.matches` tool argument) to search complete category lists for requested labels,
@@ -86,12 +109,17 @@ Replace `demo_pjan` in both the label and URL with the actual dataset code. Appl
 datasets, candidate datasets in clarification questions, and source notes. Do not link dimension or
 category codes as though they were datasets.
 
-Also include a compact Markdown table of the relevant returned observations. Prefer user-friendly columns such as geography, period, unit, indicator, category, value, and status/flag when present. Keep the table bounded to the rows needed to answer the question; if the result is too large, show the most relevant rows and explain how it was limited.
+When the host does not render structured observations, include a compact Markdown table of the
+relevant returned rows. Prefer user-friendly columns such as geography, period, unit, indicator,
+category, value, and status/flag when present. Keep the table bounded to the rows needed to answer
+the question. In hosts that expose `publish_result` and render its structured rows, do not duplicate
+observation values in a Markdown table or transcribe values from truncated model-visible tool
+output; the published structured result is the authoritative table.
 
 When an answer uses values from multiple datasets, preserve and show one bounded table for every
-dataset used. Put each table in its own expandable section when the host supports expandable
-content, label the section with the dataset code and title, and do not substitute only a joined or
-last-fetched table for the underlying source tables.
+dataset used. Let the host render the source tables when it supports structured or expandable
+content. Otherwise put each Markdown table in its own section, label it with the dataset code and
+title, and do not substitute only a joined or last-fetched table for the underlying source tables.
 
 Do not treat Eurostat values as versioned historical database snapshots. Eurostat states that the database contains the latest dataset versions.
 

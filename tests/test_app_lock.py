@@ -57,6 +57,7 @@ class AppLockTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(data["default_model"], [model["id"] for model in data["models"]])
+        self.assertIn("moonshotai/kimi-k2-thinking", [model["id"] for model in data["models"]])
         self.assertIn("fetch_eurostat", [tool["name"] for tool in data["tools"]])
         self.assertIn("publish_result", [tool["name"] for tool in data["tools"]])
         self.assertEqual(len(data["tools"]), 4)

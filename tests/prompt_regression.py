@@ -200,6 +200,18 @@ def _assert_row_count(rows: list[dict[str, Any]], expected: Any) -> None:
         raise ScenarioFailure(f"row_count: expected at most {expected['max']}, got {len(rows)}")
 
 
+def _assert_count(actual: int, expected: Any, label: str) -> None:
+    if isinstance(expected, int):
+        _assert_equal(actual, expected, label)
+        return
+    if not isinstance(expected, dict):
+        raise ScenarioFailure(f"{label} must be an integer or an object with min/max")
+    if "min" in expected and actual < int(expected["min"]):
+        raise ScenarioFailure(f"{label}: expected at least {expected['min']}, got {actual}")
+    if "max" in expected and actual > int(expected["max"]):
+        raise ScenarioFailure(f"{label}: expected at most {expected['max']}, got {actual}")
+
+
 def _matching_numeric_rows(
     rows: list[dict[str, Any]],
     condition: dict[str, Any],
@@ -251,14 +263,20 @@ def assert_turn(
         "filters",
         "row_count",
         "required_rows",
+        "forbidden_rows",
+        "answer_excludes_row_labels",
         "row_unique_by",
         "numeric",
         "chart",
+        "chart_not",
         "tools",
+        "tool_counts",
+        "tool_call_count",
         "no_tool_errors",
         "answer_contains",
         "answer_not_contains",
         "answer_regex",
+        "answer_not_regex",
         "warnings_contain",
         "provenance",
     }
@@ -277,11 +295,26 @@ def assert_turn(
             raise ScenarioFailure(f"answer must not contain {value!r}")
     if "answer_regex" in expected and not re.search(str(expected["answer_regex"]), answer, re.I):
         raise ScenarioFailure(f"answer does not match /{expected['answer_regex']}/")
+    if "answer_not_regex" in expected and re.search(
+        str(expected["answer_not_regex"]), answer, re.I
+    ):
+        raise ScenarioFailure(f"answer must not match /{expected['answer_not_regex']}/")
 
     details = response.get("tool_call_details") or []
     tool_names = [detail.get("name") for detail in details]
     if "tools" in expected:
         _assert_equal(tool_names, expected["tools"], "tools")
+    if "tool_counts" in expected:
+        expected_counts = expected["tool_counts"]
+        if not isinstance(expected_counts, dict):
+            raise ScenarioFailure("tool_counts must be an object")
+        unexpected_tools = sorted(set(tool_names) - set(expected_counts))
+        if unexpected_tools:
+            raise ScenarioFailure(f"unexpected tool name(s): {', '.join(unexpected_tools)}")
+        for name, count_expectation in expected_counts.items():
+            _assert_count(tool_names.count(name), count_expectation, f"tool count {name}")
+    if "tool_call_count" in expected:
+        _assert_count(len(tool_names), expected["tool_call_count"], "tool_call_count")
     if expected.get("no_tool_errors") and any(detail.get("status") == "error" for detail in details):
         raise ScenarioFailure("one or more tool calls failed")
     if forbid_duplicate_tools:
@@ -312,6 +345,8 @@ def assert_turn(
             "filters",
             "row_count",
             "required_rows",
+            "forbidden_rows",
+            "answer_excludes_row_labels",
             "numeric",
             "chart",
             "provenance",
@@ -340,6 +375,20 @@ def assert_turn(
     for required in expected.get("required_rows", []):
         if not any(_row_matches(row, required) for row in rows):
             raise ScenarioFailure(f"required row not found: {required!r}")
+    for forbidden_row in expected.get("forbidden_rows", []):
+        if any(_row_matches(row, forbidden_row) for row in rows):
+            raise ScenarioFailure(f"forbidden row found: {forbidden_row!r}")
+    for field in expected.get("answer_excludes_row_labels", []):
+        labels = {
+            str(row[field]).strip()
+            for row in rows
+            if row.get(field) is not None and str(row[field]).strip()
+        }
+        mentioned = sorted(label for label in labels if label.casefold() in answer.casefold())
+        if mentioned:
+            raise ScenarioFailure(
+                f"answer mentions forbidden {field} row label(s): {', '.join(mentioned)}"
+            )
     unique_fields = expected.get("row_unique_by")
     if unique_fields:
         keys = [tuple(row.get(field) for field in unique_fields) for row in rows]
@@ -352,6 +401,11 @@ def assert_turn(
         chart = result.get("chart") or {}
         for key, value in expected["chart"].items():
             _assert_equal(chart.get(key), value, f"chart.{key}")
+    if "chart_not" in expected:
+        chart = result.get("chart") or {}
+        for key, values in expected["chart_not"].items():
+            if chart.get(key) in values:
+                raise ScenarioFailure(f"chart.{key} must not be {chart.get(key)!r}")
     warnings = " ".join(str(item) for item in result.get("warnings") or [])
     for value in expected.get("warnings_contain", []):
         if str(value).casefold() not in warnings.casefold():

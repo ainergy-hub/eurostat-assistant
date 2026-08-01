@@ -403,6 +403,13 @@ class StructuredResultTests(unittest.TestCase):
                 },
                 "rows": [
                     {
+                        "geo": "EU27_2020",
+                        "geo_label": "European Union - 27 countries (from 2020)",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 45_000,
+                    },
+                    {
                         "geo": "DE",
                         "geo_label": "Germany",
                         "time": "2025",
@@ -431,6 +438,13 @@ class StructuredResultTests(unittest.TestCase):
                     "updated": "2026-03-24T23:00:00+0100",
                 },
                 "rows": [
+                    {
+                        "geo": "EU27_2020",
+                        "geo_label": "European Union - 27 countries (from 2020)",
+                        "time": "2025",
+                        "time_label": "2025",
+                        "value": 210.0,
+                    },
                     {
                         "geo": "DE",
                         "geo_label": "Germany",
@@ -466,6 +480,8 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(result["chart"]["type"], "scatter")
         self.assertEqual(result["chart"]["label"], "geo_label")
         self.assertEqual(len(result["rows"]), 2)
+        self.assertNotIn("EU27_2020", {row["geo"] for row in result["rows"]})
+        self.assertIn("aggregate geographies", result["warnings"][0])
         self.assertEqual(len(result["sources"]), 2)
         self.assertEqual(result["rows"][0]["geo_label"], "Germany")
         x_field = result["chart"]["x"]
@@ -584,6 +600,14 @@ class StructuredResultTests(unittest.TestCase):
                                                 "y_label": "Patents per million inhabitants",
                                                 "title": "GDP per capita and patent applications",
                                                 "label": "geo_label",
+                                                "chart": {
+                                                    "type": "scatter",
+                                                    "purpose": "relationship",
+                                                    "x": "value",
+                                                    "y": "value",
+                                                    "label": "geo_label",
+                                                    "trendline": "linear",
+                                                },
                                             }
                                         ),
                                     },
@@ -616,6 +640,18 @@ class StructuredResultTests(unittest.TestCase):
 
         assert response["result"] is not None
         self.assertEqual(response["result"]["chart"]["type"], "scatter")
+        self.assertEqual(response["result"]["chart"]["x"], "gdp_per_capita_pps")
+        self.assertEqual(
+            response["result"]["chart"]["y"],
+            "patents_per_million_inhabitants",
+        )
+        self.assertNotIn(response["result"]["chart"]["x"], {"time", "time_label"})
+        self.assertEqual(response["result"]["chart"]["x_label"], "GDP per capita (PPS)")
+        self.assertEqual(
+            response["result"]["chart"]["y_label"],
+            "Patents per million inhabitants",
+        )
+        self.assertEqual(response["result"]["chart"]["trendline"], "linear")
         self.assertEqual(response["result"]["dataset"]["code"], "sdg_10_10__pat_ep_tot")
         self.assertEqual(len(response["result"]["rows"]), 2)
         self.assertEqual(
@@ -1418,6 +1454,19 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertIn("too broad", output)
         self.assertEqual(helper_mock.call_count, 1)
+
+    @patch("app.sandbox_agent.run_helper")
+    def test_search_tool_returns_enough_candidates_for_family_tables(self, helper_mock) -> None:
+        helper_mock.return_value = "[]"
+
+        call_tool(
+            "search_eurostat",
+            json.dumps({"query": "electricity final energy consumption", "limit": 5}),
+        )
+
+        command = helper_mock.call_args.args[0]
+        limit_index = command.index("--limit") + 1
+        self.assertEqual(command[limit_index], "12")
 
     def test_tool_result_preview_respects_public_contract(self) -> None:
         preview = tool_output_preview("x" * (MAX_EVENT_PREVIEW_CHARS + 20))

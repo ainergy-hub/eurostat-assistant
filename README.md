@@ -110,14 +110,14 @@ Add your credentials to `.env`:
 ```dotenv
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=openai/gpt-4.1-mini
-OPENROUTER_MODEL_OPTIONS=openai/gpt-4.1-mini,openai/gpt-4.1
+OPENROUTER_MODEL_OPTIONS=openai/gpt-4.1-mini,openai/gpt-4.1,moonshotai/kimi-k2-thinking
 APP_PASSWORD=choose-a-strong-password
 LOCAL_AGENT_CONCURRENCY=2
 ```
 
 `OPENROUTER_MODEL` is optional and defaults to `openai/gpt-4.1-mini`.
 `OPENROUTER_MODEL_OPTIONS` controls the models shown under **Development → Model**. It is optional
-and defaults to the two models shown above; the configured default is always included. A browser's
+and defaults to the three models shown above; the configured default is always included. A browser's
 selection applies to new questions only and remains local to that browser.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.

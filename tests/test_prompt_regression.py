@@ -77,8 +77,55 @@ class PromptRegressionHarnessTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ScenarioFailure, "duplicate tool call"):
             assert_turn(duplicate, {"result": "null"})
+        with self.assertRaisesRegex(ScenarioFailure, "expected at most 1"):
+            assert_turn(
+                duplicate,
+                {
+                    "result": "null",
+                    "tool_counts": {"search_eurostat": {"max": 1}},
+                },
+                forbid_duplicate_tools=False,
+            )
         with self.assertRaisesRegex(ScenarioFailure, "unsupported assertions"):
             assert_turn({"answer": "Done.", "result": None}, {"exact_answer": "Done."})
+        with self.assertRaisesRegex(ScenarioFailure, "must not match"):
+            assert_turn(
+                {"answer": "France: 26.49%", "result": None},
+                {"answer_not_regex": "\\d+(?:\\.\\d+)?%"},
+            )
+        with self.assertRaisesRegex(ScenarioFailure, "chart.x must not"):
+            assert_turn(
+                {
+                    "answer": "Done.",
+                    "result": {
+                        "dataset": {"code": "paired"},
+                        "filters": {},
+                        "rows": [{"time": "2024", "x_value": 1, "y_value": 2}],
+                        "chart": {"type": "scatter", "x": "time", "y": "x_value"},
+                    },
+                },
+                {"result": "present", "chart_not": {"x": ["time", "time_label"]}},
+            )
+
+    def test_forbidden_rows_reject_aggregate_observations(self) -> None:
+        response = {
+            "answer": "Done.",
+            "result": {
+                "dataset": {"code": "paired", "source_url": "https://example.test"},
+                "filters": {},
+                "rows": [{"geo": "EU27_2020", "time": "2024"}],
+            },
+        }
+        with self.assertRaisesRegex(ScenarioFailure, "forbidden row found"):
+            assert_turn(response, {"result": "present", "forbidden_rows": [{"geo": "EU27_2020"}]})
+
+        response["answer"] = "Germany is an example."
+        response["result"]["rows"] = [{"geo": "DE", "geo_label": "Germany"}]
+        with self.assertRaisesRegex(ScenarioFailure, "forbidden geo_label"):
+            assert_turn(
+                response,
+                {"result": "present", "answer_excludes_row_labels": ["geo_label"]},
+            )
 
     def test_malformed_scenario_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

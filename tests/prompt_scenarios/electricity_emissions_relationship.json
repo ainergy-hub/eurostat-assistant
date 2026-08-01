@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "electricity_emissions_relationship",
+  "tags": ["energy", "emissions", "relationship", "scatter", "tool-budget", "smoke"],
+  "turns": [
+    {
+      "prompt": "what is the relation between electricity in final energy consumption and emissions internsity of economy",
+      "expect": {
+        "result": "present",
+        "dataset": "nrg_ind_fecf__env_ac_aeint_r2",
+        "filters": {
+          "nrg_ind_fecf.nrg_bal": ["FC_E"],
+          "nrg_ind_fecf.siec": ["E7000"],
+          "nrg_ind_fecf.unit": ["PC"],
+          "nrg_ind_fecf.lastTimePeriod": ["1"],
+          "env_ac_aeint_r2.airpol": ["GHG"],
+          "env_ac_aeint_r2.nace_r2": ["TOTAL"],
+          "env_ac_aeint_r2.na_item": ["B1G"],
+          "env_ac_aeint_r2.unit": ["G_EUR_CLV20"],
+          "env_ac_aeint_r2.lastTimePeriod": ["1"]
+        },
+        "row_count": 28,
+        "row_unique_by": ["geo", "time"],
+        "required_rows": [
+          {"geo": "DE", "time": "2024"},
+          {"geo": "FR", "time": "2024"},
+          {"geo": "SE", "time": "2024"}
+        ],
+        "forbidden_rows": [
+          {"geo": "EU27_2020"}
+        ],
+        "chart": {
+          "type": "scatter",
+          "label": "geo_label"
+        },
+        "chart_not": {
+          "x": ["time", "time_label"],
+          "y": ["time", "time_label"]
+        },
+        "tool_counts": {
+          "search_eurostat": 2,
+          "inspect_dimensions": {"min": 2, "max": 4},
+          "fetch_eurostat": 2,
+          "publish_result": 1
+        },
+        "tool_call_count": {"min": 7, "max": 9},
+        "no_tool_errors": true,
+        "answer_contains": ["2024", "association", "nrg_ind_fecf", "env_ac_aeint_r2"],
+        "answer_not_contains": ["household calorific"],
+        "provenance": true
+      }
+    }
+  ]
+}

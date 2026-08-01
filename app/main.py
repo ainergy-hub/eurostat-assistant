@@ -40,6 +40,7 @@ APP_VERSION = "0.3.0"
 DEFAULT_MODEL_OPTIONS = (
     "openai/gpt-4.1-mini",
     "openai/gpt-4.1",
+    "moonshotai/kimi-k2-thinking",
 )
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 
