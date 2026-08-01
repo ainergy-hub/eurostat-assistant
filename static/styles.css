@@ -301,7 +301,7 @@ a {
   min-width: 0;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   gap: var(--space-3);
   border-right: var(--border-hairline);
   background: var(--color-surface);
@@ -621,63 +621,6 @@ th {
   color: var(--color-text-muted);
 }
 
-.development-link {
-  width: 100%;
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--color-text-primary);
-  cursor: pointer;
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-}
-
-.development-link:hover,
-.development-link.active {
-  border-color: var(--color-border);
-  background: var(--color-panel);
-}
-
-.development-link.active {
-  box-shadow: inset 2px 0 var(--color-accent);
-}
-
-.development-link > svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: var(--color-accent);
-  stroke-width: 1.6;
-}
-
-.development-link > span:nth-child(2) {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
-}
-
-.development-link strong {
-  font-size: 0.68rem;
-  letter-spacing: 0.035em;
-  text-transform: uppercase;
-}
-
-.development-link small {
-  overflow: hidden;
-  color: var(--color-text-muted);
-  font-size: 0.56rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.development-link > span:last-child {
-  color: var(--color-accent);
-}
-
 .sidebar-foot p {
   margin: 0;
   font-size: 0.6rem;
@@ -754,6 +697,7 @@ th {
 }
 
 .theme-toggle-button,
+.development-button,
 .download-log-button,
 .lock-app-button {
   width: 44px;
@@ -784,14 +728,26 @@ th {
 }
 
 .theme-toggle-button:hover,
+.development-button:hover,
 .download-log-button:hover,
 .lock-app-button:hover {
   border-color: var(--color-text-primary);
 }
 
 .theme-toggle-button,
+.development-button,
 .lock-app-button {
   background: transparent;
+}
+
+.development-button {
+  color: var(--color-accent);
+}
+
+.development-button.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-dim);
 }
 
 .theme-toggle-icon {
@@ -1617,6 +1573,48 @@ tbody tr:last-child td {
   color: var(--color-error);
   font-family: var(--font-mono);
   font-size: 0.82rem;
+}
+
+.response-actions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: var(--border-hairline);
+  padding: var(--space-3) var(--space-5);
+}
+
+.retry-button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: var(--border-hairline);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.retry-button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent-dim);
+}
+
+.retry-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.retry-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.error-card .retry-button:hover {
+  border-color: var(--color-error);
+  color: var(--color-error);
 }
 
 .ask-panel {

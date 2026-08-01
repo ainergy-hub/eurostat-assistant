@@ -10,7 +10,7 @@
     <title>Eurostat Lens — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260801-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260801-2" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -70,18 +70,6 @@
         </div>
         <nav class="chat-list" id="chat-list" aria-label="Saved chats"></nav>
 
-        <button class="development-link" id="development-link" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path>
-            <circle cx="12" cy="12" r="3.2"></circle>
-          </svg>
-          <span>
-            <strong>Development</strong>
-            <small>Model, tools &amp; runtime</small>
-          </span>
-          <span aria-hidden="true">→</span>
-        </button>
-
         <div class="sidebar-foot">
           <span class="local-icon" aria-hidden="true">◌</span>
           <p>
@@ -104,6 +92,19 @@
             </div>
           </div>
           <div class="topbar-meta">
+            <button
+              class="development-button"
+              id="development-link"
+              type="button"
+              title="Development settings"
+              aria-label="Open development settings"
+            >
+              <span class="utility-label">Development settings</span>
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4A2 2 0 0 0 4 9.9l.2.1a2 2 0 0 1 1 1.7v.6a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.6a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
             <button
               class="theme-toggle-button"
               id="theme-toggle"
@@ -426,6 +427,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260801-2" type="module"></script>
+    <script src="/static/app.js?v=20260801-3" type="module"></script>
   </body>
 </html>

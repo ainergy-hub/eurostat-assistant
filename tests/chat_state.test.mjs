@@ -6,6 +6,7 @@ import {
   buildChatLog,
   buildContextSummary,
   latestDataResult,
+  latestUnansweredFailure,
   recentHistory,
   titleFromPrompt,
 } from "../static/chat_state.js";
@@ -29,6 +30,35 @@ assert.equal(history[0].content, "Question 4");
 assert.deepEqual(Object.keys(history[0]), ["role", "content"]);
 assert.equal(latestDataResult(messages).dataset.code, "demo_pjan");
 assert.equal(latestDataResult([{ role: "user", content: "No chart yet" }]), null);
+
+const failedRequest = latestUnansweredFailure({
+  messages: [
+    { role: "assistant", content: "Earlier answer", createdAt: "2026-07-26T10:00:00.000Z" },
+    { role: "user", content: "Try this", createdAt: "2026-07-26T10:01:00.000Z" },
+  ],
+  events: [
+    { type: "request_error", message: "Unavailable", createdAt: "2026-07-26T10:01:02.000Z" },
+  ],
+});
+assert.equal(failedRequest.message, "Unavailable");
+assert.equal(failedRequest.prompt, "Try this");
+assert.equal(failedRequest.priorMessages.length, 1);
+assert.equal(
+  latestUnansweredFailure({
+    messages: [{ role: "user", content: "Newer", createdAt: "2026-07-26T10:02:00.000Z" }],
+    events: [
+      { type: "request_error", message: "Older", createdAt: "2026-07-26T10:01:00.000Z" },
+    ],
+  }),
+  null,
+);
+assert.equal(
+  latestUnansweredFailure({
+    messages: [{ role: "assistant", content: "Completed" }],
+    events: [{ type: "request_error", createdAt: "2026-07-26T10:01:00.000Z" }],
+  }),
+  null,
+);
 
 const summary = buildContextSummary(messages);
 assert.match(summary, /Question 0/);

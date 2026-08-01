@@ -58,6 +58,26 @@ export function latestDataResult(messages) {
     ?.result ?? null;
 }
 
+export function latestUnansweredFailure(record) {
+  const messages = Array.isArray(record?.messages) ? record.messages : [];
+  const lastMessage = messages.at(-1);
+  if (lastMessage?.role !== "user") return null;
+  const questionTime = Date.parse(lastMessage.createdAt || "");
+  const failure = [...(record?.events || [])]
+    .reverse()
+    .find((event) => event.type === "request_error");
+  if (!failure) return null;
+  const failureTime = Date.parse(failure.createdAt || "");
+  if (!Number.isFinite(questionTime) || !Number.isFinite(failureTime)) return null;
+  return failureTime >= questionTime
+    ? {
+        message: failure.message,
+        prompt: lastMessage.content,
+        priorMessages: messages.slice(0, -1),
+      }
+    : null;
+}
+
 function diagnosticToolCallDetails(details) {
   if (!Array.isArray(details)) return details;
   return details.map(({ result_preview: _resultPreview, ...detail }) => detail);

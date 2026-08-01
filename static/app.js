@@ -2,9 +2,10 @@ import {
   buildChatLog,
   buildContextSummary,
   latestDataResult,
+  latestUnansweredFailure,
   recentHistory,
   titleFromPrompt,
-} from "./chat_state.js";
+} from "./chat_state.js?v=20260801-1";
 import {
   ChatHistoryStore,
   requestPersistentStorage,
@@ -94,6 +95,7 @@ let lockEnabled = false;
 let notificationTimer = null;
 let developmentSettings = null;
 let selectedModel = "";
+let pendingRetryContext = null;
 
 function syncThemeToggle() {
   const isDark = document.documentElement.dataset.theme === themeApi.DARK;
@@ -838,7 +840,30 @@ function syncPendingLabel() {
   }
 }
 
-function addError(message) {
+function retryPrompt(message, priorMessages = []) {
+  const prompt = String(message || "").trim();
+  if (!prompt || inFlightChatId) return;
+  pendingRetryContext = { prompt, priorMessages: [...priorMessages] };
+  promptInput.value = prompt;
+  composer.requestSubmit();
+}
+
+function appendRetryAction(response, prompt, priorMessages = []) {
+  if (!String(prompt || "").trim()) return;
+  const actions = element("div", "response-actions");
+  const retryButton = element("button", "retry-button");
+  retryButton.type = "button";
+  retryButton.setAttribute("aria-label", "Retry this question");
+  retryButton.append(
+    element("span", "retry-icon", "↻"),
+    element("span", "", "Retry"),
+  );
+  retryButton.addEventListener("click", () => retryPrompt(prompt, priorMessages));
+  actions.appendChild(retryButton);
+  response.appendChild(actions);
+}
+
+function addError(message, prompt, priorMessages = [], shouldScroll = true) {
   const response = element("article", "response error-card");
   response.appendChild(element("div", "response-kicker", "Could not complete the request"));
   const answer = element("div", "answer");
@@ -850,7 +875,9 @@ function addError(message) {
     ),
   );
   response.appendChild(answer);
+  appendRetryAction(response, prompt, priorMessages);
   chat.appendChild(response);
+  if (shouldScroll) response.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function displayValue(value) {
@@ -1174,7 +1201,15 @@ function responseDatasetCodes(result, details) {
   return [...codes];
 }
 
-function addResponse(answerText, result, toolCalls, details = [], shouldScroll = true) {
+function addResponse(
+  answerText,
+  result,
+  toolCalls,
+  details = [],
+  retryMessage = "",
+  retryContext = [],
+  shouldScroll = true,
+) {
   const response = element("article", "response");
   const kicker = element("div", "response-kicker");
   kicker.appendChild(element("span", "", "Eurostat agent"));
@@ -1205,6 +1240,7 @@ function addResponse(answerText, result, toolCalls, details = [], shouldScroll =
     }
     response.appendChild(createProvenance(result));
   }
+  appendRetryAction(response, retryMessage, retryContext);
   chat.appendChild(response);
   if (shouldScroll) response.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -1229,8 +1265,12 @@ function renderWorkspace() {
     ? "Older turns are represented by a bounded extractive summary to reduce model input."
     : "";
 
-  for (const message of record.messages) {
+  let latestQuestion = "";
+  let latestQuestionContext = [];
+  for (const [index, message] of record.messages.entries()) {
     if (message.role === "user") {
+      latestQuestion = message.content;
+      latestQuestionContext = record.messages.slice(0, index);
       addQuestion(message.content);
     } else {
       addResponse(
@@ -1238,10 +1278,14 @@ function renderWorkspace() {
         message.result,
         message.toolCalls,
         message.toolCallDetails || [],
+        latestQuestion,
+        latestQuestionContext,
         false,
       );
     }
   }
+  const failure = latestUnansweredFailure(record);
+  if (failure) addError(failure.message, failure.prompt, failure.priorMessages, false);
   if (hasPendingForChat(inFlightState, record.id)) {
     addPending(inFlightState.label);
   }
@@ -1316,7 +1360,11 @@ composer.addEventListener("submit", async (event) => {
   const record = activeChat();
   if (!message || !record || inFlightChatId) return;
 
-  const priorMessages = [...record.messages];
+  const retryContext = pendingRetryContext?.prompt === message ? pendingRetryContext : null;
+  pendingRetryContext = null;
+  const priorMessages = retryContext
+    ? [...retryContext.priorMessages]
+    : [...record.messages];
   const summary = buildContextSummary(priorMessages);
   const history = recentHistory(priorMessages);
   const contextResult = latestDataResult(priorMessages);
@@ -1424,7 +1472,6 @@ composer.addEventListener("submit", async (event) => {
     }
     if (state.activeChatId === record.id) {
       renderWorkspace();
-      addError(error.message);
     }
   } finally {
     window.clearInterval(timer);
