@@ -163,8 +163,8 @@
             </div>
             <div class="development-intro">
               <p>
-                Choose the model used for new questions and inspect the bounded tools,
-                runtime, and privacy rules behind each answer.
+                Choose the model used for new questions and inspect the four bounded tools,
+                query safeguards, runtime, and privacy rules behind each answer.
               </p>
               <button class="secondary-button back-to-chat" id="back-to-chat" type="button">
                 <span aria-hidden="true">←</span>
@@ -233,17 +233,17 @@
                 <li>
                   <span>02</span>
                   <strong>Retrieve</strong>
-                  <p>Allow-listed tools find and fetch official Eurostat observations.</p>
+                  <p>Three data tools search, inspect, and fetch official Eurostat observations.</p>
                 </li>
                 <li>
                   <span>03</span>
                   <strong>Validate</strong>
-                  <p>The host checks filters, rows, chart fields, and public output.</p>
+                  <p>The host bounds time, estimated cells, response bytes, filters, and chart fields.</p>
                 </li>
                 <li>
                   <span>04</span>
                   <strong>Present</strong>
-                  <p>The browser renders sourced text, safe charts, and exportable tables.</p>
+                  <p>One publication tool selects, pairs, or re-charts rows for safe rendering.</p>
                 </li>
               </ol>
             </section>
@@ -254,6 +254,7 @@
                 <div>
                   <span class="settings-kicker">Allow-listed capabilities</span>
                   <h2 id="tools-title">Tools the agent can use</h2>
+                  <p>Search, inspect, fetch, and publish—nothing else can be invoked.</p>
                 </div>
               </header>
               <div class="tool-catalog" id="development-tool-catalog">
@@ -278,7 +279,9 @@
                 <span class="settings-kicker">Built-in guardrails</span>
                 <ul>
                   <li>Only the listed tools can be called.</li>
-                  <li>Each run has strict tool-call and row limits.</li>
+                  <li>Every fetch requires a bounded time selection.</li>
+                  <li>Cell estimates and Eurostat response bytes are capped before rendering.</li>
+                  <li>Each run has strict tool-call, period, and result-row limits.</li>
                   <li>Model-authored HTML and JavaScript never execute.</li>
                   <li>Chat history stays in this browser’s IndexedDB.</li>
                 </ul>
@@ -423,6 +426,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260801-1" type="module"></script>
+    <script src="/static/app.js?v=20260801-2" type="module"></script>
   </body>
 </html>

@@ -32,7 +32,7 @@
           "inspect_dimensions",
           "fetch_eurostat",
           "fetch_eurostat",
-          "select_result"
+          "publish_result"
         ],
         "no_tool_errors": true,
         "answer_contains": ["photovoltaic"],

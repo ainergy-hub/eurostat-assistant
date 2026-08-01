@@ -50,6 +50,7 @@ sandboxed agent.
 ## Repository layout
 
 - `SKILL.md`: reusable Eurostat agent workflow and answering rules.
+- `agent_limits.json`: authoritative runtime, query-size, context, and per-tool limits.
 - `scripts/eurostat_api.py`: standard-library search, dimensions, and fetch CLI.
 - `references/eurostat-api.md`: API patterns and troubleshooting notes.
 - `references/chart-selection.md`: chart-purpose matrix and safe modification rules.
@@ -86,7 +87,9 @@ python3 scripts/eurostat_api.py fetch demo_pjan \
 ```
 
 `search` and `dimensions` emit JSON. `fetch` emits CSV by default and also supports
-`--output json`. Use `--max-rows` to change the default 500-observation output limit.
+`--output json`. Use `--max-rows` to change the default 500-observation output limit. Fetches must
+include `--time` or `--last-time-period` and remain within the configured response-byte and
+estimated-cell limits.
 
 ## Run the web app
 
@@ -159,8 +162,8 @@ public so Railway can verify a locked deployment, but it exposes only service re
 1. The browser sends a question, up to six recent messages, an extractive summary of older
    messages, and the most recent structured chart result to `POST /api/chat/stream`.
 2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
-3. The model can use six allow-listed tools: dataset search, dimension inspection, bounded fetch,
-   paired scatter composition, validated chart configuration, and explicit result selection.
+3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
+   and validated publication of a selected, re-charted, or paired result.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
 5. The host assigns each successful fetch a result ID, publishes a single fetch automatically or
    an explicitly selected fetch after multiple attempts, validates chart fields, and derives a
@@ -187,8 +190,10 @@ result, while explicit table/chart reuse selects the previous result. A differen
 geography, time range, or unavailable fact still triggers a new lookup.
 
 The agent executes at most 12 unique tools per request, with smaller per-tool ceilings. Identical
-calls reuse their earlier output, invalid complete-dimension filters are rejected before an API
-request, and zero-row fetches do not become public results.
+calls reuse their earlier output, invalid complete-dimension filters and over-broad cell estimates
+are rejected before the observation request, Eurostat response bytes are capped, and zero-row
+fetches do not become public results. Runtime limits have one source of truth in
+`agent_limits.json`.
 
 Use **Download log** in the current investigation header to export a local JSON diagnostic log.
 The export contains the chat, dataset and filter metadata, tool-call status, timing for new
@@ -268,7 +273,8 @@ For correlation questions spanning two datasets, the agent joins observations on
 as geography and period. The result uses `chart.type: "scatter"`, includes both numeric measures in
 each table row, and lists both Eurostat datasets in `sources`.
 
-For chart-only follow-ups, the agent reuses the latest validated rows and calls `configure_chart`.
+For chart-only follow-ups, the agent reuses the latest validated rows and calls `publish_result`
+with `context` and a validated chart intent.
 The host resolves `type: "auto"` from the requested analytical purpose, validates field roles and
 cardinality, and emits only the bounded public chart contract. The model never supplies raw
 Vega-Lite, HTML, or JavaScript.

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   MODEL_STORAGE_KEY,
+  developmentLimitRows,
   loadSelectedModel,
   readableSettingName,
   saveSelectedModel,
@@ -50,4 +51,23 @@ test("only saves models exposed by the deployment", () => {
 
 test("formats internal setting names for readers", () => {
   assert.equal(readableSettingName("inspect_dimensions"), "Inspect Dimensions");
+});
+
+test("describes every enforced development limit", () => {
+  const rows = developmentLimitRows({
+    tool_calls: 12,
+    result_rows: 500,
+    estimated_cells: 50000,
+    time_periods: 20,
+    eurostat_response_bytes: 8000000,
+    recent_messages: 6,
+    summary_characters: 2400,
+  });
+
+  assert.deepEqual(rows, [
+    { label: "Agent budget", value: "12 tool calls · 500 result rows" },
+    { label: "Eurostat query guard", value: "50,000 estimated cells · 20 time periods" },
+    { label: "Eurostat response cap", value: "8 MB per response" },
+    { label: "Conversation context", value: "6 recent messages · 2,400 summary characters" },
+  ]);
 });

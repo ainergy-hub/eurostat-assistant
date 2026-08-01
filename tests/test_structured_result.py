@@ -12,6 +12,7 @@ from app.main import (
 )
 from app.sandbox_agent import (
     MAX_EVENT_PREVIEW_CHARS,
+    MAX_ESTIMATED_CELLS,
     MAX_TOOL_CALLS,
     MAX_TOOL_ROUNDS,
     TOOLS,
@@ -19,6 +20,7 @@ from app.sandbox_agent import (
     build_scatter_result,
     build_source_tables,
     build_structured_result,
+    call_tool,
     contains_tool_markup,
     legacy_tool_calls,
     response_result,
@@ -27,6 +29,7 @@ from app.sandbox_agent import (
     tool_call_reason,
     tool_arguments,
     tool_output_preview,
+    validate_fetch_arguments,
 )
 
 
@@ -257,27 +260,22 @@ class StructuredResultTests(unittest.TestCase):
 
         self.assertNotIn("choose_chart", tool_names)
 
-    def test_configure_chart_tool_exposes_bounded_chart_modifications(self) -> None:
-        configure_chart = next(
-            tool["function"] for tool in TOOLS if tool["function"]["name"] == "configure_chart"
+    def test_publish_result_exposes_selection_join_and_bounded_chart_modifications(self) -> None:
+        publish_result = next(
+            tool["function"] for tool in TOOLS if tool["function"]["name"] == "publish_result"
         )
 
-        properties = configure_chart["parameters"]["properties"]
-        self.assertIn("auto", properties["type"]["enum"])
-        self.assertIn("heatmap", properties["type"]["enum"])
-        self.assertIn("distribution", properties["purpose"]["enum"])
-        self.assertEqual(properties["top_n"]["maximum"], 50)
+        properties = publish_result["parameters"]["properties"]
+        chart_properties = properties["chart"]["properties"]
+        self.assertIn("auto", chart_properties["type"]["enum"])
+        self.assertIn("heatmap", chart_properties["type"]["enum"])
+        self.assertIn("distribution", chart_properties["purpose"]["enum"])
+        self.assertEqual(chart_properties["top_n"]["maximum"], 50)
+        self.assertIn("join_on", properties)
         self.assertIn("x_label", properties)
         self.assertIn("y_label", properties)
-        self.assertFalse(configure_chart["parameters"]["additionalProperties"])
-
-    def test_result_selection_tool_is_available(self) -> None:
-        select_result = next(
-            tool["function"] for tool in TOOLS if tool["function"]["name"] == "select_result"
-        )
-
-        self.assertEqual(select_result["parameters"]["required"], ["result_id"])
-        self.assertFalse(select_result["parameters"]["additionalProperties"])
+        self.assertEqual(publish_result["parameters"]["required"], ["result_ids"])
+        self.assertFalse(publish_result["parameters"]["additionalProperties"])
 
     def test_multiple_fetches_require_an_explicit_result_selection(self) -> None:
         first = {**self.fetch_record, "result_id": "fetch-1"}
@@ -477,14 +475,6 @@ class StructuredResultTests(unittest.TestCase):
         response = ChatResponse(answer="Positive relationship.", result=result)
         self.assertEqual(len(response.result.sources), 2)
 
-    def test_create_scatter_tool_is_available_for_multi_dataset_relationships(self) -> None:
-        create_scatter = next(
-            tool["function"] for tool in TOOLS if tool["function"]["name"] == "create_scatter"
-        )
-
-        self.assertIn("two previously fetched", create_scatter["description"])
-        self.assertIn("join_on", create_scatter["parameters"]["required"])
-
     @patch("app.sandbox_agent.call_tool")
     @patch("app.sandbox_agent.openrouter_chat")
     def test_agent_returns_composed_scatter_instead_of_last_fetched_bar(
@@ -585,11 +575,10 @@ class StructuredResultTests(unittest.TestCase):
                                 {
                                     "id": "make-scatter",
                                     "function": {
-                                        "name": "create_scatter",
+                                        "name": "publish_result",
                                         "arguments": json.dumps(
                                             {
-                                                "x_dataset": "sdg_10_10",
-                                                "y_dataset": "pat_ep_tot",
+                                                "result_ids": ["fetch-1", "fetch-2"],
                                                 "join_on": ["geo", "time"],
                                                 "x_label": "GDP per capita (PPS)",
                                                 "y_label": "Patents per million inhabitants",
@@ -633,7 +622,7 @@ class StructuredResultTests(unittest.TestCase):
             [table["dataset"]["code"] for table in response["result"]["source_tables"]],
             ["sdg_10_10", "pat_ep_tot"],
         )
-        self.assertEqual(response["tool_call_details"][-1]["name"], "create_scatter")
+        self.assertEqual(response["tool_call_details"][-1]["name"], "publish_result")
         self.assertEqual(response["tool_call_details"][-1]["status"], "completed")
 
     def test_missing_fetch_has_no_result(self) -> None:
@@ -672,7 +661,7 @@ class StructuredResultTests(unittest.TestCase):
         messages = build_messages({"query": "Show the distribution."})
 
         self.assertIn("Chart selection", messages[0]["content"])
-        self.assertIn("configure_chart", messages[0]["content"])
+        self.assertIn("publish_result", messages[0]["content"])
         self.assertIn("histogram", messages[0]["content"])
 
     def test_public_request_contract_bounds_recent_context(self) -> None:
@@ -775,15 +764,18 @@ class StructuredResultTests(unittest.TestCase):
                                 {
                                     "id": "configure-chart",
                                     "function": {
-                                        "name": "configure_chart",
+                                        "name": "publish_result",
                                         "arguments": json.dumps(
                                             {
-                                                "purpose": "relationship",
-                                                "type": "heatmap",
-                                                "x": "time_label",
-                                                "y": "geo_label",
-                                                "color": "value",
-                                                "labels": "hover",
+                                                "result_ids": ["context"],
+                                                "chart": {
+                                                    "purpose": "relationship",
+                                                    "type": "heatmap",
+                                                    "x": "time_label",
+                                                    "y": "geo_label",
+                                                    "color": "value",
+                                                    "labels": "hover",
+                                                },
                                             }
                                         ),
                                     },
@@ -813,7 +805,7 @@ class StructuredResultTests(unittest.TestCase):
         )
 
         self.assertEqual(response["tool_calls"], 1)
-        self.assertEqual(response["tool_call_details"][0]["name"], "configure_chart")
+        self.assertEqual(response["tool_call_details"][0]["name"], "publish_result")
         self.assertEqual(response["result"]["chart"]["type"], "heatmap")
         self.assertEqual(response["result"]["rows"], context_result["rows"])
 
@@ -1140,9 +1132,9 @@ class StructuredResultTests(unittest.TestCase):
 
         response = run({"query": "Compare explicit patent innovation proxy measures."})
 
-        self.assertEqual(response["tool_calls"], 4)
-        self.assertEqual(tool_mock.call_count, 4)
-        self.assertEqual(len(response["tool_call_details"]), 4)
+        self.assertEqual(response["tool_calls"], 2)
+        self.assertEqual(tool_mock.call_count, 2)
+        self.assertEqual(len(response["tool_call_details"]), 2)
         self.assertEqual(chat_mock.call_args_list[-1].args[2], [])
 
     @patch("app.sandbox_agent.call_tool")
@@ -1377,6 +1369,55 @@ class StructuredResultTests(unittest.TestCase):
     def test_agent_has_bounded_round_and_tool_limits(self) -> None:
         self.assertEqual(MAX_TOOL_ROUNDS, 12)
         self.assertEqual(MAX_TOOL_CALLS, 12)
+
+    def test_fetch_preflight_requires_time_and_rejects_large_cell_estimates(self) -> None:
+        catalog = {
+            "demo": {
+                "geo": {"size": MAX_ESTIMATED_CELLS + 1, "codes": [], "complete": False},
+                "time": {"size": 1, "codes": ["2025"], "complete": True},
+            }
+        }
+
+        self.assertIn(
+            "bounded time filter",
+            validate_fetch_arguments({"dataset": "demo"}, catalog),
+        )
+        self.assertIn(
+            "too broad",
+            validate_fetch_arguments(
+                {"dataset": "demo", "time": ["2025"]},
+                catalog,
+            ),
+        )
+
+    @patch("app.sandbox_agent.run_helper")
+    def test_fetch_tool_runs_dimension_preflight_before_observation_request(self, helper_mock) -> None:
+        helper_mock.return_value = json.dumps(
+            {
+                "dataset": "broad_dataset",
+                "dimensions": [
+                    {
+                        "id": "geo",
+                        "size": MAX_ESTIMATED_CELLS + 1,
+                        "sample_categories": [],
+                    },
+                    {
+                        "id": "time",
+                        "size": 1,
+                        "sample_categories": [{"code": "2025", "label": "2025"}],
+                    },
+                ],
+            }
+        )
+
+        with patch.dict("app.sandbox_agent._TOOL_DIMENSION_CATALOGS", {}, clear=True):
+            output = call_tool(
+                "fetch_eurostat",
+                json.dumps({"dataset": "broad_dataset", "time": ["2025"]}),
+            )
+
+        self.assertIn("too broad", output)
+        self.assertEqual(helper_mock.call_count, 1)
 
     def test_tool_result_preview_respects_public_contract(self) -> None:
         preview = tool_output_preview("x" * (MAX_EVENT_PREVIEW_CHARS + 20))

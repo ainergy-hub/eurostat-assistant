@@ -19,6 +19,13 @@ from pydantic import BaseModel, Field
 
 from .e2b_agent import AgentConfig, AgentError, run_eurostat_agent
 from .sandbox_agent import MAX_RESULT_ROWS, MAX_TOOL_CALLS, TOOL_CALL_LIMITS, TOOLS
+from .sandbox_agent import (
+    MAX_ESTIMATED_CELLS,
+    MAX_EUROSTAT_RESPONSE_BYTES,
+    MAX_RECENT_MESSAGES,
+    MAX_SUMMARY_CHARACTERS,
+    MAX_TIME_PERIODS,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -201,8 +208,8 @@ class DataResult(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
-    history: list[ChatMessage] = Field(default_factory=list, max_length=6)
-    summary: str = Field(default="", max_length=2400)
+    history: list[ChatMessage] = Field(default_factory=list, max_length=MAX_RECENT_MESSAGES)
+    summary: str = Field(default="", max_length=MAX_SUMMARY_CHARACTERS)
     context_result: DataResult | None = None
     model: str | None = Field(default=None, min_length=1, max_length=200)
 
@@ -320,8 +327,11 @@ def development_settings() -> dict[str, Any]:
         "limits": {
             "tool_calls": MAX_TOOL_CALLS,
             "result_rows": MAX_RESULT_ROWS,
-            "recent_messages": 6,
-            "summary_characters": 2400,
+            "estimated_cells": MAX_ESTIMATED_CELLS,
+            "eurostat_response_bytes": MAX_EUROSTAT_RESPONSE_BYTES,
+            "time_periods": MAX_TIME_PERIODS,
+            "recent_messages": MAX_RECENT_MESSAGES,
+            "summary_characters": MAX_SUMMARY_CHARACTERS,
         },
         "runtime": {
             "model_gateway": "OpenRouter",
@@ -335,6 +345,7 @@ def development_settings() -> dict[str, Any]:
 def _agent_config(model: str | None = None) -> AgentConfig:
     return AgentConfig(
         model=_resolve_request_model(model),
+        limits_path=ROOT / "agent_limits.json",
         skill_path=ROOT / "SKILL.md",
         chart_reference_path=ROOT / "references" / "chart-selection.md",
         helper_path=ROOT / "scripts" / "eurostat_api.py",

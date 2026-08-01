@@ -16,9 +16,9 @@ results whose period-plus-series grain is not unique.
 | `composition` | stacked bar; normalized bar for percentage shares; stacked area for composition over time | category/period, series, numeric measure |
 | `change` | line for several periods | ordered period, numeric measure |
 
-After the relevant rows exist, call `configure_chart` to select or modify the chart. Use only fields
-present in the loaded rows. Common modifications are `orientation`, `sort`, `top_n`, `stack`,
-`trendline`, `labels`, `scale`, `zero_baseline`, `series`, `size`, and `label`.
+After the relevant rows exist, use the `chart` object in `publish_result` to select or modify the
+chart. Use only fields present in the loaded rows. Common modifications are `orientation`, `sort`,
+`top_n`, `stack`, `trendline`, `labels`, `scale`, `zero_baseline`, `series`, `size`, and `label`.
 
 Apply these guardrails:
 

@@ -27,6 +27,13 @@ from typing import Any
 BASE = "https://ec.europa.eu/eurostat/api/dissemination"
 TOC_URL = f"{BASE}/catalogue/toc/txt?lang=en"
 DATA_URL = f"{BASE}/statistics/1.0/data"
+LIMITS_PATH = Path(__file__).resolve().parent / "agent_limits.json"
+if not LIMITS_PATH.exists():
+    LIMITS_PATH = Path(__file__).resolve().parent.parent / "agent_limits.json"
+LIMITS = json.loads(LIMITS_PATH.read_text(encoding="utf-8"))
+MAX_RESPONSE_BYTES = int(LIMITS["max_eurostat_response_bytes"])
+MAX_ESTIMATED_CELLS = int(LIMITS["max_estimated_cells"])
+MAX_TIME_PERIODS = int(LIMITS["max_time_periods"])
 SEARCH_STOP_WORDS = {
     "a",
     "across",
@@ -62,7 +69,23 @@ def get_text(url: str) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": "codex-eurostat-skill/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=45) as response:
-            return response.read().decode("utf-8-sig")
+            content_length = response.headers.get("Content-Length")
+            try:
+                declared_bytes = int(content_length) if content_length else None
+            except ValueError:
+                declared_bytes = None
+            if declared_bytes is not None and declared_bytes > MAX_RESPONSE_BYTES:
+                raise SystemExit(
+                    "Eurostat response is too large "
+                    f"({declared_bytes} bytes; limit {MAX_RESPONSE_BYTES}). Narrow the filters."
+                )
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+            if len(body) > MAX_RESPONSE_BYTES:
+                raise SystemExit(
+                    "Eurostat response exceeded the "
+                    f"{MAX_RESPONSE_BYTES}-byte limit. Narrow the filters."
+                )
+            return body.decode("utf-8-sig")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise SystemExit(f"HTTP {exc.code} for {url}\n{detail[:1000]}") from exc
@@ -367,13 +390,46 @@ def flatten(data: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def estimated_cell_count(data: dict[str, Any]) -> int:
+    """Return the dense JSON-stat cube size before allocating flattened rows."""
+    estimate = 1
+    sizes = data.get("size", [])
+    if not isinstance(sizes, list):
+        raise SystemExit("Eurostat returned an invalid dimension-size list.")
+    for raw_size in sizes:
+        if not isinstance(raw_size, int) or isinstance(raw_size, bool) or raw_size < 0:
+            raise SystemExit("Eurostat returned an invalid dimension size.")
+        estimate *= raw_size
+        if estimate > MAX_ESTIMATED_CELLS:
+            raise SystemExit(
+                "Filtered Eurostat query is too broad "
+                f"({estimate} estimated cells; limit {MAX_ESTIMATED_CELLS}). "
+                "Narrow the dimension or time filters."
+            )
+    return estimate
+
+
 def fetch(args: argparse.Namespace) -> None:
     params = parse_param(args.param)
-    if args.last_time_period:
+    if args.last_time_period is not None:
+        if not 1 <= args.last_time_period <= MAX_TIME_PERIODS:
+            raise SystemExit(
+                f"--last-time-period must be between 1 and {MAX_TIME_PERIODS}."
+            )
         params.append(("lastTimePeriod", str(args.last_time_period)))
     for time_value in args.time:
         params.append(("time", time_value))
+    requested_times = {value for key, value in params if key == "time"}
+    if not requested_times and args.last_time_period is None:
+        raise SystemExit(
+            "A bounded time filter is required. Pass --time or --last-time-period."
+        )
+    if len(requested_times) > MAX_TIME_PERIODS:
+        raise SystemExit(
+            f"At most {MAX_TIME_PERIODS} explicit time periods may be requested."
+        )
     data = get_json(build_url(args.dataset, params))
+    estimated_cells = estimated_cell_count(data)
     rows = flatten(data)
     total_rows = len(rows)
     truncated = bool(args.max_rows and total_rows > args.max_rows)
@@ -389,6 +445,7 @@ def fetch(args: argparse.Namespace) -> None:
                         "total_rows": total_rows,
                         "returned_rows": len(rows),
                         "truncated": truncated,
+                        "estimated_cells": estimated_cells,
                     },
                     "rows": rows,
                 },

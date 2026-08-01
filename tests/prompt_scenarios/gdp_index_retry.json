@@ -34,7 +34,7 @@
           "series": "geo_label",
           "y_label": "Chain linked volumes, index 2005=100"
         },
-        "tools": ["inspect_dimensions", "fetch_eurostat", "configure_chart"],
+        "tools": ["inspect_dimensions", "fetch_eurostat", "publish_result"],
         "no_tool_errors": true,
         "answer_contains": ["2005=100"],
         "provenance": true

@@ -30,3 +30,26 @@ export function readableSettingName(value) {
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
+
+export function developmentLimitRows(limits = {}) {
+  const number = (value) => Number(value || 0).toLocaleString("en-US");
+  const megabytes = Number(limits.eurostat_response_bytes || 0) / 1_000_000;
+  return [
+    {
+      label: "Agent budget",
+      value: `${number(limits.tool_calls)} tool calls · ${number(limits.result_rows)} result rows`,
+    },
+    {
+      label: "Eurostat query guard",
+      value: `${number(limits.estimated_cells)} estimated cells · ${number(limits.time_periods)} time periods`,
+    },
+    {
+      label: "Eurostat response cap",
+      value: `${number(megabytes)} MB per response`,
+    },
+    {
+      label: "Conversation context",
+      value: `${number(limits.recent_messages)} recent messages · ${number(limits.summary_characters)} summary characters`,
+    },
+  ];
+}

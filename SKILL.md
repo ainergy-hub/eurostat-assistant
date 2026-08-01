@@ -14,10 +14,10 @@ Use Eurostat as the authoritative source when the user asks for European officia
 3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly. Otherwise run one catalogue search and inspect up to two credible candidate datasets. Pass requested region, unit, product, and indicator labels as dimension matches so codes outside the samples are discovered rather than guessed. Do not fetch observations for competing interpretations.
 4. After discovery, continue when one candidate clearly matches. State and proceed with a reasonable reversible assumption when the remaining ambiguity is minor. Ask one focused question when candidates represent materially different concepts, units, populations, or geographic grains.
 5. Ground clarification questions in the discovery: name the search performed, candidate dataset titles and codes, the relevant differences, and a recommended option when one is a better match.
-6. After the measure is resolved, fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`.
+6. After the measure is resolved, fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`. Always include an explicit time selection or `last_time_period`; the host rejects unbounded time queries and data cubes above its configured cell and response-size limits.
 7. Answer from the returned data. Name the dataset code, filters, units, geography, and latest period used. Show the relevant observations in a Markdown table as part of the user-facing response.
 8. When a visualization is requested or a clean multi-period trend materially improves the answer, choose it from the analytical relationship and the validated row shape. Read `references/chart-selection.md` for the chart matrix and guardrails. Do not automatically chart single-period, matrix, or high-dimensional tables. Reuse loaded rows for chart-only follow-ups instead of fetching again.
-9. Every successful fetch receives a result ID. One successful fetch can be published automatically. After multiple successful fetches, explicitly select the result that supports the final answer. Previous conversation data is reasoning context, not a result to republish unless the user asks to reuse or re-chart it.
+9. In hosts that expose `publish_result`, every successful fetch receives a result ID. One successful fetch can be published automatically. After multiple successful fetches, publish the supporting result ID. To re-chart reusable conversation rows, publish `context` with a chart. To pair two measures, publish both result IDs with shared join keys and optional chart settings. Previous conversation data is reasoning context, not a result to republish unless the user asks to reuse or re-chart it.
 
 Prefer the smallest query that answers the question. Always filter high-cardinality dimensions such as `geo`, `time`, `unit`, `freq`, `sex`, `age`, `nace_r2`, `indic_*`, `siec`, `currency`, or `coicop` before fetching broad data.
 
@@ -65,6 +65,8 @@ Pass filters as repeated query parameters. Use dynamic time filters when appropr
 - `--time 2020 --time 2021` for exact periods.
 
 If the API returns too much data, narrow filters and retry. If an exact dataset cannot be found, explain the search terms tried and offer the closest candidates rather than inventing values.
+
+The runtime limits in `agent_limits.json` are authoritative for the web agent. Treat a rejected cell estimate, response-size limit, or missing time bound as a request to narrow the existing query, not to restart dataset discovery.
 
 ## Answering
 

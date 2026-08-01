@@ -68,11 +68,11 @@
                 "role": "assistant",
                 "tool_calls": [
                   {
-                    "id": "select-pv",
+                    "id": "publish-pv",
                     "type": "function",
                     "function": {
-                      "name": "select_result",
-                      "arguments": "{\"result_id\":\"fetch-1\"}"
+                      "name": "publish_result",
+                      "arguments": "{\"result_ids\":[\"fetch-1\"]}"
                     }
                   }
                 ]

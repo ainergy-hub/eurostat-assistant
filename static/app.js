@@ -21,10 +21,11 @@ import {
 import { createChartSection, finalizeChartViews } from "./chart.js?v=20260731-1";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
 import {
+  developmentLimitRows,
   loadSelectedModel,
   readableSettingName,
   saveSelectedModel,
-} from "./development_settings.js";
+} from "./development_settings.js?v=20260801-2";
 
 const PAGE_SIZE = 12;
 const APP_VERSION = "0.3.0";
@@ -205,16 +206,14 @@ function renderDevelopmentSettings(settings) {
     );
     runtimeList.appendChild(row);
   }
-  const limitsRow = element("div");
-  limitsRow.append(
-    element("dt", "", "Request limits"),
-    element(
-      "dd",
-      "",
-      `${settings.limits.tool_calls} tool calls · ${settings.limits.result_rows} result rows`,
-    ),
-  );
-  runtimeList.appendChild(limitsRow);
+  for (const limit of developmentLimitRows(settings.limits)) {
+    const row = element("div");
+    row.append(
+      element("dt", "", limit.label),
+      element("dd", "", limit.value),
+    );
+    runtimeList.appendChild(row);
+  }
   developmentAppVersion.textContent = `v${settings.app_version}`;
 }
 

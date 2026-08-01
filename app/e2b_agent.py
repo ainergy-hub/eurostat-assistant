@@ -21,6 +21,7 @@ class AgentError(RuntimeError):
 @dataclass(frozen=True)
 class AgentConfig:
     model: str
+    limits_path: Path
     skill_path: Path
     chart_reference_path: Path
     helper_path: Path
@@ -62,6 +63,7 @@ def run_eurostat_agent(
     openrouter_api_key = _require_env("OPENROUTER_API_KEY")
 
     for path in (
+        config.limits_path,
         config.skill_path,
         config.chart_reference_path,
         config.helper_path,
@@ -97,6 +99,10 @@ def run_eurostat_agent(
 
     try:
         sandbox = Sandbox.create(timeout=180)
+        sandbox.files.write(
+            f"{SANDBOX_DIR}/agent_limits.json",
+            config.limits_path.read_text(),
+        )
         sandbox.files.write(f"{SANDBOX_DIR}/SKILL.md", config.skill_path.read_text())
         sandbox.files.write(
             f"{SANDBOX_DIR}/chart-selection.md",

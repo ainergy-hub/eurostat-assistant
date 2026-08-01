@@ -20,6 +20,7 @@ COPY references ./references
 COPY scripts ./scripts
 COPY static ./static
 COPY SKILL.md ./
+COPY agent_limits.json ./
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser

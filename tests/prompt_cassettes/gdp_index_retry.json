@@ -64,11 +64,11 @@
                 "role": "assistant",
                 "tool_calls": [
                   {
-                    "id": "configure-gdp",
+                    "id": "publish-gdp",
                     "type": "function",
                     "function": {
-                      "name": "configure_chart",
-                      "arguments": "{\"purpose\":\"trend\",\"type\":\"line\",\"x\":\"time_label\",\"y\":\"value\",\"series\":\"geo_label\",\"x_label\":\"Period\",\"y_label\":\"Chain linked volumes, index 2005=100\",\"title\":\"Real GDP, 2005=100\"}"
+                      "name": "publish_result",
+                      "arguments": "{\"result_ids\":[\"fetch-1\"],\"chart\":{\"purpose\":\"trend\",\"type\":\"line\",\"x\":\"time_label\",\"y\":\"value\",\"series\":\"geo_label\",\"x_label\":\"Period\",\"y_label\":\"Chain linked volumes, index 2005=100\",\"title\":\"Real GDP, 2005=100\"}}"
                     }
                   }
                 ]

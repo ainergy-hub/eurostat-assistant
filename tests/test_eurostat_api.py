@@ -1,17 +1,60 @@
 from __future__ import annotations
 
 import unittest
+from argparse import Namespace
+from unittest.mock import patch
 
 from scripts.eurostat_api import (
+    MAX_ESTIMATED_CELLS,
+    MAX_RESPONSE_BYTES,
     build_url,
     coords_from_index,
+    estimated_cell_count,
+    fetch,
     flatten,
+    get_text,
     match_dimension_categories,
     rank_catalog,
 )
 
 
 class EurostatApiTests(unittest.TestCase):
+    def test_estimated_cell_count_rejects_over_broad_cubes_before_flattening(self) -> None:
+        self.assertEqual(estimated_cell_count({"size": [2, 3, 4]}), 24)
+
+        with self.assertRaisesRegex(SystemExit, "too broad"):
+            estimated_cell_count({"size": [MAX_ESTIMATED_CELLS, 2]})
+
+    def test_http_reader_rejects_responses_above_the_byte_limit(self) -> None:
+        class Response:
+            headers = {"Content-Length": str(MAX_RESPONSE_BYTES + 1)}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch("scripts.eurostat_api.urllib.request.urlopen", return_value=Response()):
+            with self.assertRaisesRegex(SystemExit, "too large"):
+                get_text("https://example.test/data")
+
+    def test_fetch_requires_a_bounded_time_filter_before_network_access(self) -> None:
+        arguments = Namespace(
+            dataset="demo_pjan",
+            param=["geo=DE"],
+            last_time_period=None,
+            time=[],
+            max_rows=500,
+            output="json",
+        )
+
+        with patch("scripts.eurostat_api.get_json") as get_json_mock:
+            with self.assertRaisesRegex(SystemExit, "bounded time filter"):
+                fetch(arguments)
+
+        get_json_mock.assert_not_called()
+
     def test_coordinates_follow_json_stat_row_major_order(self) -> None:
         self.assertEqual(coords_from_index(0, [2, 3]), [0, 0])
         self.assertEqual(coords_from_index(4, [2, 3]), [1, 1])

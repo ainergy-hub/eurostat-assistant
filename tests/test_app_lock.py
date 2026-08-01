@@ -56,6 +56,10 @@ class AppLockTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(data["default_model"], [model["id"] for model in data["models"]])
         self.assertIn("fetch_eurostat", [tool["name"] for tool in data["tools"]])
+        self.assertIn("publish_result", [tool["name"] for tool in data["tools"]])
+        self.assertEqual(len(data["tools"]), 4)
+        self.assertEqual(data["limits"]["estimated_cells"], 50_000)
+        self.assertEqual(data["limits"]["eurostat_response_bytes"], 8_000_000)
         self.assertEqual(data["runtime"]["history"], "This browser (IndexedDB)")
 
     def test_unknown_model_is_rejected_before_starting_an_agent(self) -> None:
