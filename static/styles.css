@@ -200,15 +200,54 @@ body {
 }
 
 .lock-mark {
-  width: 42px;
+  width: 52px;
   height: 42px;
+  flex: 0 0 auto;
   display: block;
-  border: 1px solid var(--color-border);
-  background:
-    linear-gradient(90deg, transparent 45%, var(--color-panel) 45% 55%, transparent 55%),
-    linear-gradient(transparent 45%, var(--color-panel) 45% 55%, transparent 55%),
-    var(--color-accent);
+  background: var(--color-accent);
+  -webkit-mask: url("/static/logo.svg") center / contain no-repeat;
+  mask: url("/static/logo.svg") center / contain no-repeat;
+}
+
+.logo-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.lock-logo {
   margin-bottom: var(--space-8);
+}
+
+.logo-type,
+.brand-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  line-height: 1;
+}
+
+.logo-type strong {
+  font-family: var(--font-text);
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.logo-type span,
+.brand-copy span {
+  color: var(--color-accent);
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.logo-type span {
+  font-size: 0.74rem;
+}
+
+.brand-copy span {
+  font-size: 0.68rem;
 }
 
 .lock-card h1 {
@@ -326,29 +365,23 @@ a {
 }
 
 .brand-mark {
-  position: relative;
-  width: 28px;
-  height: 28px;
+  width: 38px;
+  height: 30px;
   flex: 0 0 auto;
-  display: inline-block;
-  border: 1px solid var(--color-border);
-  background:
-    linear-gradient(90deg, transparent 45%, var(--color-panel) 45% 55%, transparent 55%),
-    linear-gradient(transparent 45%, var(--color-panel) 45% 55%, transparent 55%),
-    var(--color-accent);
-  box-shadow: none;
+  display: block;
+  background: var(--color-accent);
+  -webkit-mask: url("/static/logo.svg") center / contain no-repeat;
+  mask: url("/static/logo.svg") center / contain no-repeat;
 }
 
 .brand-copy {
-  min-width: 0;
-  display: grid;
-  gap: 1px;
+  gap: 6px;
 }
 
 .brand-copy strong {
   overflow: hidden;
   font-family: var(--font-text);
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -614,7 +647,7 @@ th {
 
 .sidebar-foot {
   display: flex;
-  align-items: start;
+  align-items: center;
   gap: var(--space-2);
   border-top: 1px solid var(--color-border-light);
   padding: var(--space-3) var(--space-1) 2px;
@@ -1740,7 +1773,7 @@ footer a:hover {
 
 .development-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-right: var(--border-hairline);
   border-bottom: var(--border-hairline);
   border-left: var(--border-hairline);

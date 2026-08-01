@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Eurostat Assistant</title>
+  <desc id="desc">A magnifying lens containing three data bars</desc>
+  <g fill="none" stroke="#ff4f00" stroke-linecap="round">
+    <circle cx="27" cy="27" r="18" stroke-width="6"/>
+    <path d="m40 40 14 14" stroke-width="8"/>
+    <path d="M20 33v-6M27 33V21M34 33v-9" stroke-width="4"/>
+  </g>
+</svg>

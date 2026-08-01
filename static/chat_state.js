@@ -114,7 +114,7 @@ export function buildChatLog(
   return {
     schemaVersion: CHAT_LOG_SCHEMA_VERSION,
     app: {
-      name: "Eurostat Lens",
+      name: "Eurostat Assistant",
       version: appVersion,
     },
     exportedAt,

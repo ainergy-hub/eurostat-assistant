@@ -195,7 +195,6 @@ function renderDevelopmentSettings(settings) {
 
   const runtimeLabels = {
     model_gateway: "Model gateway",
-    sandbox: "Agent runtime",
     data_source: "Data source",
     history: "Chat history",
   };
@@ -802,7 +801,7 @@ function downloadCurrentChatLog() {
   const link = document.createElement("a");
   const date = exportedAt.slice(0, 10);
   link.href = URL.createObjectURL(blob);
-  link.download = `eurostat-lens-${filenamePart(record.title)}-${date}.json`;
+  link.download = `eurostat-assistant-${filenamePart(record.title)}-${date}.json`;
   document.body.appendChild(link);
   link.click();
   link.remove();

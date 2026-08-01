@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .e2b_agent import AgentConfig, AgentError, run_eurostat_agent
+from .local_agent import AgentConfig, AgentError, run_eurostat_agent
 from .sandbox_agent import MAX_RESULT_ROWS, MAX_TOOL_CALLS, TOOL_CALL_LIMITS, TOOLS
 from .sandbox_agent import (
     MAX_ESTIMATED_CELLS,
@@ -31,7 +31,7 @@ from .sandbox_agent import (
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = ROOT / "static"
 
-app = FastAPI(title="Eurostat Lens")
+app = FastAPI(title="Eurostat Assistant")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
@@ -294,7 +294,7 @@ def lock() -> JSONResponse:
 def health() -> dict[str, bool]:
     return {
         "ok": True,
-        "agent_ready": bool(os.getenv("E2B_API_KEY") and os.getenv("OPENROUTER_API_KEY")),
+        "agent_ready": bool(os.getenv("OPENROUTER_API_KEY")),
     }
 
 
@@ -335,7 +335,6 @@ def development_settings() -> dict[str, Any]:
         },
         "runtime": {
             "model_gateway": "OpenRouter",
-            "sandbox": "E2B",
             "data_source": "Eurostat public APIs",
             "history": "This browser (IndexedDB)",
         },
@@ -345,11 +344,7 @@ def development_settings() -> dict[str, Any]:
 def _agent_config(model: str | None = None) -> AgentConfig:
     return AgentConfig(
         model=_resolve_request_model(model),
-        limits_path=ROOT / "agent_limits.json",
-        skill_path=ROOT / "SKILL.md",
-        chart_reference_path=ROOT / "references" / "chart-selection.md",
-        helper_path=ROOT / "scripts" / "eurostat_api.py",
-        sandbox_agent_path=ROOT / "app" / "sandbox_agent.py",
+        runner_path=ROOT / "app" / "sandbox_agent.py",
     )
 
 

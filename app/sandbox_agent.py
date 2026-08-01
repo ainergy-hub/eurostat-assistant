@@ -17,6 +17,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 EUROSTAT_HELPER = ROOT / "eurostat_api.py"
+if not EUROSTAT_HELPER.exists():
+    EUROSTAT_HELPER = ROOT.parent / "scripts" / "eurostat_api.py"
 SKILL = ROOT / "SKILL.md"
 if not SKILL.exists():
     SKILL = ROOT.parent / "SKILL.md"
@@ -39,7 +41,7 @@ TOOL_CALL_LIMITS = {
 }
 EVENT_PREFIX = "__EUROSTAT_EVENT__"
 MAX_EVENT_PREVIEW_CHARS = 700
-CATALOG_CACHE = ROOT / "eurostat_toc.tsv"
+CATALOG_CACHE = Path(os.getenv("EUROSTAT_CATALOG_CACHE", ROOT / "eurostat_toc.tsv"))
 CHART_REFERENCE = ROOT / "chart-selection.md"
 if not CHART_REFERENCE.exists():
     CHART_REFERENCE = ROOT.parent / "references" / "chart-selection.md"
@@ -230,7 +232,7 @@ _TOOL_DIMENSION_CATALOGS: dict[str, dict[str, dict[str, Any]]] = {}
 
 def run_helper(args: list[str]) -> str:
     completed = subprocess.run(
-        ["python3", str(EUROSTAT_HELPER), *args],
+        [sys.executable, str(EUROSTAT_HELPER), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -1369,7 +1371,7 @@ def openrouter_chat(
             "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
             "Content-Type": "application/json",
             "HTTP-Referer": "http://localhost:8000",
-            "X-Title": "Eurostat Lens",
+            "X-Title": "Eurostat Assistant",
         },
         method="POST",
     )
@@ -1385,7 +1387,7 @@ def build_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
     skill_text = SKILL.read_text()
     chart_reference = CHART_REFERENCE.read_text() if CHART_REFERENCE.exists() else ""
     system = f"""
-You are a Eurostat data agent running inside an E2B sandbox.
+You are a Eurostat data agent running in a short-lived local process.
 
 Follow this local skill exactly:
 

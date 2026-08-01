@@ -1,1 +1,1 @@
-"""Eurostat E2B chat app."""
+"""Eurostat Assistant chat app."""

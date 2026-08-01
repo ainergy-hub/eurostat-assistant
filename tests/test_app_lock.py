@@ -32,10 +32,12 @@ class AppLockTests(unittest.TestCase):
         )
 
     def test_health_check_is_public_when_app_is_locked(self) -> None:
-        response = self.client.get("/api/health")
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-openrouter"}, clear=True):
+            response = self.client.get("/api/health")
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["ok"])
+        self.assertTrue(response.json()["agent_ready"])
 
     def test_development_page_is_available_for_direct_navigation(self) -> None:
         response = self.client.get("/settings/development")
@@ -60,6 +62,7 @@ class AppLockTests(unittest.TestCase):
         self.assertEqual(len(data["tools"]), 4)
         self.assertEqual(data["limits"]["estimated_cells"], 50_000)
         self.assertEqual(data["limits"]["eurostat_response_bytes"], 8_000_000)
+        self.assertNotIn("agent_runtime", data["runtime"])
         self.assertEqual(data["runtime"]["history"], "This browser (IndexedDB)")
 
     def test_unknown_model_is_rejected_before_starting_an_agent(self) -> None:

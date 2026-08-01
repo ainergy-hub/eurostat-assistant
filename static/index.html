@@ -7,16 +7,21 @@
       name="description"
       content="Ask questions of official Eurostat data and receive a sourced answer, chart, and table."
     />
-    <title>Eurostat Lens — Ask official European data</title>
+    <title>Eurostat Assistant — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260801-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260801-4" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
       <div class="lock-card">
-        <span class="lock-mark" aria-hidden="true"></span>
-        <p class="eyebrow">Eurostat Lens</p>
+        <div class="logo-lockup lock-logo" aria-label="Eurostat Assistant">
+          <span class="lock-mark" aria-hidden="true"></span>
+          <span class="logo-type">
+            <strong>Eurostat</strong>
+            <span>Assistant</span>
+          </span>
+        </div>
         <h1 id="app-lock-title">Welcome back</h1>
         <form class="lock-form" id="app-lock-form">
           <label for="app-lock-password">App password</label>
@@ -40,10 +45,11 @@
     <div class="app-layout" id="app-layout" inert hidden>
       <aside class="sidebar" id="sidebar" aria-label="Investigations">
         <div class="sidebar-header">
-          <a class="brand" href="/" aria-label="Eurostat Lens home">
+          <a class="brand" href="/" aria-label="Eurostat Assistant home">
             <span class="brand-mark" aria-hidden="true"></span>
             <span class="brand-copy">
-              <strong>Eurostat Lens</strong>
+              <strong>Eurostat</strong>
+              <span>Assistant</span>
             </span>
           </a>
           <button class="sidebar-close" id="sidebar-close" type="button" aria-label="Close chat list">
@@ -183,10 +189,6 @@
               <span>Available tools</span>
               <strong id="tool-count-summary">—</strong>
             </div>
-            <div class="development-metric">
-              <span>Execution</span>
-              <strong>Isolated sandbox</strong>
-            </div>
           </div>
 
           <div class="settings-stack">
@@ -290,7 +292,7 @@
             </section>
 
             <footer class="development-footer">
-              <span>Eurostat Lens <strong id="development-app-version">v—</strong></span>
+              <span>Eurostat Assistant <strong id="development-app-version">v—</strong></span>
             </footer>
           </div>
         </section>

@@ -1,11 +1,11 @@
-# Eurostat Lens
+# Eurostat Assistant
 
-Eurostat Lens is an open-source toolkit for answering natural-language questions with current,
+Eurostat Assistant is an open-source toolkit for answering natural-language questions with current,
 official Eurostat data. It contains two independently usable parts:
 
 - **`fetch-eurostat-data` Codex skill and CLI helper** for dataset discovery, dimension inspection,
   and reproducible data retrieval.
-- **Eurostat Lens reference web app** for conversational investigations with sourced answers,
+- **Eurostat Assistant reference web app** for conversational investigations with sourced answers,
   interactive charts, filterable tables, and CSV export.
 
 The project is designed for focused questions that can be answered from a bounded slice of one
@@ -14,7 +14,7 @@ Browser or a general-purpose business intelligence platform.
 
 ## Current scope
 
-Eurostat Lens can:
+Eurostat Assistant can:
 
 - search Eurostat's table-of-contents metadata for candidate datasets;
 - inspect dataset-specific dimensions, category codes, labels, and update dates;
@@ -44,8 +44,7 @@ The current scope does not include:
 - production controls such as user accounts, rate limiting, caching, monitoring, or usage budgets.
 
 Eurostat publishes the latest version of each dataset through its public APIs. The data endpoints do
-not require an API key; the optional web app requires E2B and OpenRouter credentials to run its
-sandboxed agent.
+not require an API key; the optional web app requires an OpenRouter credential to run its agent.
 
 ## Repository layout
 
@@ -55,15 +54,15 @@ sandboxed agent.
 - `references/eurostat-api.md`: API patterns and troubleshooting notes.
 - `references/chart-selection.md`: chart-purpose matrix and safe modification rules.
 - `agents/openai.yaml`: Codex skill display metadata.
-- `app/sandbox_agent.py`: allow-listed tool-calling agent executed inside E2B.
-- `app/e2b_agent.py`: E2B lifecycle, event streaming, and result handling.
+- `app/sandbox_agent.py`: allow-listed tool-calling agent executed in a local child process.
+- `app/local_agent.py`: local process lifecycle, event streaming, concurrency, and result handling.
 - `app/main.py`: FastAPI endpoints and validated public response models.
 - `static/`: browser UI, investigation state, Vega-Lite charts, tables, and CSV export.
 - `tests/`: helper, response-contract, chart, Markdown, and browser-state tests.
 
 ## Use the Codex skill
 
-The skill and CLI helper work without E2B, OpenRouter, or third-party Python packages.
+The skill and CLI helper work without OpenRouter or third-party Python packages.
 
 Install this repository as a personal Codex skill:
 
@@ -97,7 +96,6 @@ Requirements:
 
 - Python 3.10 or newer;
 - [uv](https://docs.astral.sh/uv/);
-- an [E2B](https://e2b.dev/) API key;
 - an [OpenRouter](https://openrouter.ai/) API key.
 
 Install dependencies and create the local environment file:
@@ -110,11 +108,11 @@ cp .env.example .env
 Add your credentials to `.env`:
 
 ```dotenv
-E2B_API_KEY=your_e2b_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=openai/gpt-4.1-mini
 OPENROUTER_MODEL_OPTIONS=openai/gpt-4.1-mini,openai/gpt-4.1
 APP_PASSWORD=choose-a-strong-password
+LOCAL_AGENT_CONCURRENCY=2
 ```
 
 `OPENROUTER_MODEL` is optional and defaults to `openai/gpt-4.1-mini`.
@@ -124,6 +122,8 @@ selection applies to new questions only and remains local to that browser.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
 Leave `APP_PASSWORD` unset only when the app is running in an already trusted environment.
+`LOCAL_AGENT_CONCURRENCY` optionally controls the maximum number of agent child processes. It
+defaults to `2`; additional requests wait for an available slot.
 
 Start the app:
 
@@ -145,10 +145,10 @@ promoting a deployment.
 2. Add these service variables in Railway:
 
    ```dotenv
-   E2B_API_KEY=your_e2b_api_key
    OPENROUTER_API_KEY=your_openrouter_api_key
    OPENROUTER_MODEL=openai/gpt-4.1-mini
    APP_PASSWORD=choose-a-strong-password
+   LOCAL_AGENT_CONCURRENCY=2
    ```
 
 3. Generate a public domain from the service's **Settings → Networking** page.
@@ -161,7 +161,8 @@ public so Railway can verify a locked deployment, but it exposes only service re
 
 1. The browser sends a question, up to six recent messages, an extractive summary of older
    messages, and the most recent structured chart result to `POST /api/chat/stream`.
-2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
+2. FastAPI starts a short-lived local child process with a minimal environment, a per-request
+   temporary catalogue cache, and a 180-second timeout.
 3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
    and validated publication of a selected, re-charted, or paired result.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
@@ -194,6 +195,11 @@ calls reuse their earlier output, invalid complete-dimension filters and over-br
 are rejected before the observation request, Eurostat response bytes are capped, and zero-row
 fetches do not become public results. Runtime limits have one source of truth in
 `agent_limits.json`.
+
+The local agent process is not an operating-system sandbox. It runs as the container's unprivileged
+application user, receives only an allow-listed subset of environment variables, and is terminated
+with its helper processes when the request times out. Do not add arbitrary shell or user-authored
+code execution without introducing a stronger isolation boundary.
 
 Use **Download log** in the current investigation header to export a local JSON diagnostic log.
 The export contains the chat, dataset and filter metadata, tool-call status, timing for new

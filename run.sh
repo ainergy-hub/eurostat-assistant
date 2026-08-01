@@ -11,11 +11,6 @@ if [ -f ".env" ]; then
   set +a
 fi
 
-if [ -z "${E2B_API_KEY:-}" ]; then
-  echo "Missing E2B_API_KEY. Add it to .env or export it before running." >&2
-  exit 1
-fi
-
 if [ -z "${OPENROUTER_API_KEY:-}" ]; then
   echo "Missing OPENROUTER_API_KEY. Add it to .env or export it before running." >&2
   exit 1
@@ -37,7 +32,7 @@ esac
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 
-echo "Starting Eurostat Lens on http://${HOST}:${PORT}"
+echo "Starting Eurostat Assistant on http://${HOST}:${PORT}"
 echo "Using OpenRouter model: ${OPENROUTER_MODEL}"
 
 exec uv run uvicorn app.main:app \
