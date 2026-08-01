@@ -110,10 +110,14 @@ Add your credentials to `.env`:
 E2B_API_KEY=your_e2b_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL=openai/gpt-4.1-mini
+OPENROUTER_MODEL_OPTIONS=openai/gpt-4.1-mini,openai/gpt-4.1
 APP_PASSWORD=choose-a-strong-password
 ```
 
 `OPENROUTER_MODEL` is optional and defaults to `openai/gpt-4.1-mini`.
+`OPENROUTER_MODEL_OPTIONS` controls the models shown under **Development → Model**. It is optional
+and defaults to the two models shown above; the configured default is always included. A browser's
+selection applies to new questions only and remains local to that browser.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
 Leave `APP_PASSWORD` unset only when the app is running in an already trusted environment.
@@ -155,8 +159,8 @@ public so Railway can verify a locked deployment, but it exposes only service re
 1. The browser sends a question, up to six recent messages, an extractive summary of older
    messages, and the most recent structured chart result to `POST /api/chat/stream`.
 2. FastAPI creates a short-lived E2B sandbox and copies in the skill, API helper, and agent runner.
-3. The model can use five allow-listed tools: dataset search, dimension inspection, bounded fetch,
-   paired scatter composition, and validated chart configuration.
+3. The model can use six allow-listed tools: dataset search, dimension inspection, bounded fetch,
+   paired scatter composition, validated chart configuration, and explicit result selection.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
 5. The host assigns each successful fetch a result ID, publishes a single fetch automatically or
    an explicitly selected fetch after multiple attempts, validates chart fields, and derives a
@@ -192,13 +196,19 @@ responses, compacted context, and recorded request errors. Observation rows and 
 previews are excluded. Review the file before sharing because the chat text may still contain
 reported values.
 
+Use **Development** in the sidebar (or open `/settings/development`) to select an enabled model and
+inspect the request lifecycle, tool descriptions and limits, runtime services, privacy behavior,
+and app version.
+
 ### HTTP endpoints
 
 - `GET /`: web interface.
+- `GET /settings/development`: development settings interface.
 - `GET /api/auth/status`: app-lock status.
 - `POST /api/auth/unlock`: unlock the app with `APP_PASSWORD`.
 - `POST /api/auth/lock`: clear the current app session.
 - `GET /api/health`: public service and agent-credential readiness probe.
+- `GET /api/settings/development`: enabled models, tools, limits, and runtime metadata.
 - `POST /api/chat`: validated, non-streaming chat response.
 - `POST /api/chat/stream`: newline-delimited status, tool-call, result, and error events.
 

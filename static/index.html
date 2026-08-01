@@ -10,7 +10,7 @@
     <title>Eurostat Lens — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260728-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260801-1" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -69,6 +69,18 @@
           <span id="chat-count">0</span>
         </div>
         <nav class="chat-list" id="chat-list" aria-label="Saved chats"></nav>
+
+        <button class="development-link" id="development-link" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"></path>
+            <circle cx="12" cy="12" r="3.2"></circle>
+          </svg>
+          <span>
+            <strong>Development</strong>
+            <small>Model, tools &amp; runtime</small>
+          </span>
+          <span aria-hidden="true">→</span>
+        </button>
 
         <div class="sidebar-foot">
           <span class="local-icon" aria-hidden="true">◌</span>
@@ -143,7 +155,143 @@
           </div>
         </header>
 
-        <section class="hero" id="hero">
+        <section class="development-page" id="development-page" aria-labelledby="development-title" hidden>
+          <header class="development-hero">
+            <div class="development-heading">
+              <p class="eyebrow">Settings / Development</p>
+              <h1 id="development-title">How the agent works.</h1>
+            </div>
+            <div class="development-intro">
+              <p>
+                Choose the model used for new questions and inspect the bounded tools,
+                runtime, and privacy rules behind each answer.
+              </p>
+              <button class="secondary-button back-to-chat" id="back-to-chat" type="button">
+                <span aria-hidden="true">←</span>
+                <span>Back to investigation</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="development-summary" aria-label="Development configuration summary">
+            <div class="development-metric">
+              <span>Active model</span>
+              <strong id="active-model-summary">Loading…</strong>
+            </div>
+            <div class="development-metric">
+              <span>Available tools</span>
+              <strong id="tool-count-summary">—</strong>
+            </div>
+            <div class="development-metric">
+              <span>Execution</span>
+              <strong>Isolated sandbox</strong>
+            </div>
+          </div>
+
+          <div class="settings-stack">
+            <section class="settings-panel" aria-labelledby="model-settings-title">
+              <header class="settings-panel-header">
+                <span class="settings-index">01</span>
+                <div>
+                  <span class="settings-kicker">Response engine</span>
+                  <h2 id="model-settings-title">Model</h2>
+                </div>
+              </header>
+              <div class="model-settings-grid">
+                <label class="settings-field" for="model-select">
+                  <span>Model for new questions</span>
+                  <select id="model-select" disabled>
+                    <option>Loading available models…</option>
+                  </select>
+                </label>
+                <div class="model-description" aria-live="polite">
+                  <span class="settings-kicker">Why choose this</span>
+                  <p id="model-description">Reading deployment settings…</p>
+                  <span class="settings-save-status" id="settings-save-status"></span>
+                </div>
+              </div>
+              <p class="settings-note">
+                The choice is saved only in this browser and is sent with future questions.
+                Existing investigations are not re-run.
+              </p>
+            </section>
+
+            <section class="settings-panel" aria-labelledby="workflow-title">
+              <header class="settings-panel-header">
+                <span class="settings-index">02</span>
+                <div>
+                  <span class="settings-kicker">Request lifecycle</span>
+                  <h2 id="workflow-title">What happens after you ask</h2>
+                </div>
+              </header>
+              <ol class="workflow-strip">
+                <li>
+                  <span>01</span>
+                  <strong>Understand</strong>
+                  <p>The model reads your question and the bounded recent context.</p>
+                </li>
+                <li>
+                  <span>02</span>
+                  <strong>Retrieve</strong>
+                  <p>Allow-listed tools find and fetch official Eurostat observations.</p>
+                </li>
+                <li>
+                  <span>03</span>
+                  <strong>Validate</strong>
+                  <p>The host checks filters, rows, chart fields, and public output.</p>
+                </li>
+                <li>
+                  <span>04</span>
+                  <strong>Present</strong>
+                  <p>The browser renders sourced text, safe charts, and exportable tables.</p>
+                </li>
+              </ol>
+            </section>
+
+            <section class="settings-panel" aria-labelledby="tools-title">
+              <header class="settings-panel-header">
+                <span class="settings-index">03</span>
+                <div>
+                  <span class="settings-kicker">Allow-listed capabilities</span>
+                  <h2 id="tools-title">Tools the agent can use</h2>
+                </div>
+              </header>
+              <div class="tool-catalog" id="development-tool-catalog">
+                <p class="settings-loading">Loading tool descriptions…</p>
+              </div>
+            </section>
+
+            <section class="settings-panel settings-panel-split" aria-labelledby="runtime-title">
+              <div>
+                <header class="settings-panel-header">
+                  <span class="settings-index">04</span>
+                  <div>
+                    <span class="settings-kicker">System boundaries</span>
+                    <h2 id="runtime-title">Runtime &amp; privacy</h2>
+                  </div>
+                </header>
+                <dl class="runtime-list" id="runtime-list">
+                  <div><dt>Runtime</dt><dd>Loading…</dd></div>
+                </dl>
+              </div>
+              <div class="boundary-copy">
+                <span class="settings-kicker">Built-in guardrails</span>
+                <ul>
+                  <li>Only the listed tools can be called.</li>
+                  <li>Each run has strict tool-call and row limits.</li>
+                  <li>Model-authored HTML and JavaScript never execute.</li>
+                  <li>Chat history stays in this browser’s IndexedDB.</li>
+                </ul>
+              </div>
+            </section>
+
+            <footer class="development-footer">
+              <span>Eurostat Lens <strong id="development-app-version">v—</strong></span>
+            </footer>
+          </div>
+        </section>
+
+        <section class="hero" id="hero" data-chat-view>
           <h1>Explore Eurostat data.</h1>
           <div class="suggestions" aria-label="Example investigations">
             <button
@@ -173,9 +321,9 @@
           </div>
         </section>
 
-        <section class="conversation" id="chat" aria-live="polite"></section>
+        <section class="conversation" id="chat" aria-live="polite" data-chat-view></section>
 
-        <section class="ask-panel" aria-label="Ask Eurostat">
+        <section class="ask-panel" aria-label="Ask Eurostat" data-chat-view>
           <form class="composer" id="composer">
             <label class="sr-only" for="prompt">Investigation query</label>
             <textarea
@@ -194,7 +342,7 @@
           </form>
         </section>
 
-        <footer>
+        <footer data-chat-view>
           <a href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
             Eurostat source ↗
           </a>
@@ -275,6 +423,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260731-1" type="module"></script>
+    <script src="/static/app.js?v=20260801-1" type="module"></script>
   </body>
 </html>

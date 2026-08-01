@@ -5,6 +5,7 @@ import hmac
 import json
 import os
 import queue
+import re
 import threading
 import time
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .e2b_agent import AgentConfig, AgentError, run_eurostat_agent
+from .sandbox_agent import MAX_RESULT_ROWS, MAX_TOOL_CALLS, TOOL_CALL_LIMITS, TOOLS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +29,12 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
+APP_VERSION = "0.3.0"
+DEFAULT_MODEL_OPTIONS = (
+    "openai/gpt-4.1-mini",
+    "openai/gpt-4.1",
+)
+MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 
 
 def _app_password() -> str:
@@ -84,6 +92,36 @@ def _model_name() -> str:
     if "/" not in model:
         return f"openai/{model}"
     return model
+
+
+def _available_models() -> list[str]:
+    configured = os.getenv("OPENROUTER_MODEL_OPTIONS", "")
+    candidates = [item.strip() for item in configured.split(",") if item.strip()]
+    if not candidates:
+        candidates = list(DEFAULT_MODEL_OPTIONS)
+
+    default_model = _model_name()
+    ordered = [default_model, *candidates]
+    return list(dict.fromkeys(model for model in ordered if MODEL_ID_PATTERN.fullmatch(model)))
+
+
+def _model_label(model: str) -> str:
+    model_name = model.rsplit("/", 1)[-1]
+    replacements = {"gpt": "GPT", "mini": "mini"}
+    return " ".join(
+        replacements.get(part.lower(), part.capitalize())
+        for part in model_name.replace("_", "-").split("-")
+    )
+
+
+def _resolve_request_model(model: str | None) -> str:
+    selected = model or _model_name()
+    if selected not in _available_models():
+        raise HTTPException(
+            status_code=400,
+            detail="The selected model is not enabled for this deployment.",
+        )
+    return selected
 
 
 class ChatMessage(BaseModel):
@@ -166,6 +204,7 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list, max_length=6)
     summary: str = Field(default="", max_length=2400)
     context_result: DataResult | None = None
+    model: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class UnlockRequest(BaseModel):
@@ -192,6 +231,11 @@ class ChatResponse(BaseModel):
 
 @app.get("/")
 def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/settings/development")
+def development_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
@@ -247,9 +291,50 @@ def health() -> dict[str, bool]:
     }
 
 
-def _agent_config() -> AgentConfig:
+@app.get("/api/settings/development")
+def development_settings() -> dict[str, Any]:
+    default_model = _model_name()
+    return {
+        "app_version": APP_VERSION,
+        "default_model": default_model,
+        "models": [
+            {
+                "id": model,
+                "label": _model_label(model),
+                "description": (
+                    "Fast, cost-aware default for focused data questions."
+                    if model.endswith("mini")
+                    else "Higher-capability option for more involved investigations."
+                ),
+            }
+            for model in _available_models()
+        ],
+        "tools": [
+            {
+                "name": tool["function"]["name"],
+                "description": tool["function"]["description"],
+                "per_request_limit": TOOL_CALL_LIMITS[tool["function"]["name"]],
+            }
+            for tool in TOOLS
+        ],
+        "limits": {
+            "tool_calls": MAX_TOOL_CALLS,
+            "result_rows": MAX_RESULT_ROWS,
+            "recent_messages": 6,
+            "summary_characters": 2400,
+        },
+        "runtime": {
+            "model_gateway": "OpenRouter",
+            "sandbox": "E2B",
+            "data_source": "Eurostat public APIs",
+            "history": "This browser (IndexedDB)",
+        },
+    }
+
+
+def _agent_config(model: str | None = None) -> AgentConfig:
     return AgentConfig(
-        model=_model_name(),
+        model=_resolve_request_model(model),
         skill_path=ROOT / "SKILL.md",
         chart_reference_path=ROOT / "references" / "chart-selection.md",
         helper_path=ROOT / "scripts" / "eurostat_api.py",
@@ -274,7 +359,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             request.message,
             [message.model_dump() for message in request.history],
             request.summary,
-            _agent_config(),
+            _agent_config(request.model),
             request.context_result.model_dump(mode="json") if request.context_result else None,
         )
     except AgentError as exc:
@@ -285,6 +370,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    agent_config = _agent_config(request.model)
     event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
 
     def publish(event: dict[str, Any]) -> None:
@@ -296,7 +382,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 request.message,
                 [message.model_dump() for message in request.history],
                 request.summary,
-                _agent_config(),
+                agent_config,
                 request.context_result.model_dump(mode="json") if request.context_result else None,
                 on_event=publish,
             )

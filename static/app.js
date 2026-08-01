@@ -20,6 +20,11 @@ import {
 } from "./in_flight_state.js";
 import { createChartSection, finalizeChartViews } from "./chart.js?v=20260731-1";
 import { eurostatDatasetUrl, renderMarkdown } from "./markdown.js";
+import {
+  loadSelectedModel,
+  readableSettingName,
+  saveSelectedModel,
+} from "./development_settings.js";
 
 const PAGE_SIZE = 12;
 const APP_VERSION = "0.3.0";
@@ -64,6 +69,18 @@ const themeToggleButton = document.querySelector("#theme-toggle");
 const notification = document.querySelector("#notification");
 const notificationMessage = document.querySelector("#notification-message");
 const notificationDismiss = document.querySelector("#notification-dismiss");
+const developmentLink = document.querySelector("#development-link");
+const developmentPage = document.querySelector("#development-page");
+const backToChatButton = document.querySelector("#back-to-chat");
+const modelSelect = document.querySelector("#model-select");
+const modelDescription = document.querySelector("#model-description");
+const modelSaveStatus = document.querySelector("#settings-save-status");
+const activeModelSummary = document.querySelector("#active-model-summary");
+const toolCountSummary = document.querySelector("#tool-count-summary");
+const developmentToolCatalog = document.querySelector("#development-tool-catalog");
+const runtimeList = document.querySelector("#runtime-list");
+const developmentAppVersion = document.querySelector("#development-app-version");
+const chatViews = document.querySelectorAll("[data-chat-view]");
 const themeApi = globalThis.EurostatTheme;
 
 let state = { chats: [], activeChatId: null };
@@ -74,6 +91,8 @@ let inFlightState = null;
 let currentToolCalls = [];
 let lockEnabled = false;
 let notificationTimer = null;
+let developmentSettings = null;
+let selectedModel = "";
 
 function syncThemeToggle() {
   const isDark = document.documentElement.dataset.theme === themeApi.DARK;
@@ -127,6 +146,128 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+function selectedModelOption() {
+  return developmentSettings?.models?.find((model) => model.id === selectedModel) || null;
+}
+
+function syncModelDescription() {
+  const option = selectedModelOption();
+  modelDescription.textContent = option?.description || "No model description is available.";
+  activeModelSummary.textContent = option?.label || selectedModel || "Unavailable";
+}
+
+function renderDevelopmentSettings(settings) {
+  developmentSettings = settings;
+  selectedModel = loadSelectedModel(settings.models, settings.default_model);
+
+  modelSelect.replaceChildren();
+  for (const model of settings.models) {
+    const option = element("option", "", model.label);
+    option.value = model.id;
+    option.selected = model.id === selectedModel;
+    modelSelect.appendChild(option);
+  }
+  modelSelect.disabled = settings.models.length < 2;
+  syncModelDescription();
+
+  developmentToolCatalog.replaceChildren();
+  for (const [index, tool] of settings.tools.entries()) {
+    const item = element("article", "development-tool");
+    const heading = element("div", "development-tool-heading");
+    heading.append(
+      element("span", "development-tool-number", String(index + 1).padStart(2, "0")),
+      element("strong", "", readableSettingName(tool.name)),
+      element("code", "", tool.name),
+    );
+    item.append(
+      heading,
+      element("p", "", tool.description),
+      element("span", "development-tool-limit", `Up to ${tool.per_request_limit} calls per request`),
+    );
+    developmentToolCatalog.appendChild(item);
+  }
+  toolCountSummary.textContent = String(settings.tools.length);
+
+  const runtimeLabels = {
+    model_gateway: "Model gateway",
+    sandbox: "Agent runtime",
+    data_source: "Data source",
+    history: "Chat history",
+  };
+  runtimeList.replaceChildren();
+  for (const [key, value] of Object.entries(settings.runtime)) {
+    const row = element("div");
+    row.append(
+      element("dt", "", runtimeLabels[key] || readableSettingName(key)),
+      element("dd", "", value),
+    );
+    runtimeList.appendChild(row);
+  }
+  const limitsRow = element("div");
+  limitsRow.append(
+    element("dt", "", "Request limits"),
+    element(
+      "dd",
+      "",
+      `${settings.limits.tool_calls} tool calls · ${settings.limits.result_rows} result rows`,
+    ),
+  );
+  runtimeList.appendChild(limitsRow);
+  developmentAppVersion.textContent = `v${settings.app_version}`;
+}
+
+async function loadDevelopmentSettings() {
+  try {
+    const response = await fetch("/api/settings/development", { cache: "no-store" });
+    if (!response.ok) throw new Error("Development settings are unavailable.");
+    renderDevelopmentSettings(await response.json());
+  } catch (error) {
+    modelSelect.disabled = true;
+    modelDescription.textContent = error instanceof Error ? error.message : String(error);
+    activeModelSummary.textContent = "Unavailable";
+    toolCountSummary.textContent = "—";
+    developmentToolCatalog.replaceChildren(
+      element("p", "settings-loading settings-error", "Could not load tool descriptions."),
+    );
+  }
+}
+
+function showDevelopmentPage({ updateHistory = true } = {}) {
+  chatViews.forEach((view) => { view.hidden = true; });
+  developmentPage.hidden = false;
+  developmentLink.classList.add("active");
+  developmentLink.setAttribute("aria-current", "page");
+  currentChatTitle.textContent = "Development";
+  contextStatus.hidden = true;
+  downloadChatLogButton.hidden = true;
+  closeSidebar();
+  if (updateHistory && window.location.pathname !== "/settings/development") {
+    window.history.pushState({ view: "development" }, "", "/settings/development");
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showChatPage({ updateHistory = true } = {}) {
+  developmentPage.hidden = true;
+  chatViews.forEach((view) => { view.hidden = false; });
+  developmentLink.classList.remove("active");
+  developmentLink.removeAttribute("aria-current");
+  downloadChatLogButton.hidden = false;
+  renderWorkspace();
+  closeSidebar();
+  if (updateHistory && window.location.pathname !== "/") {
+    window.history.pushState({ view: "chat" }, "", "/");
+  }
+}
+
+function syncPageFromLocation() {
+  if (window.location.pathname === "/settings/development") {
+    showDevelopmentPage({ updateHistory: false });
+  } else {
+    showChatPage({ updateHistory: false });
+  }
 }
 
 function readableToolName(name) {
@@ -1147,7 +1288,9 @@ appLockForm.addEventListener("submit", async (event) => {
     if (!response.ok) throw new Error(data.detail || "The app could not be unlocked.");
     lockEnabled = Boolean(data.lock_enabled);
     showApp();
+    await loadDevelopmentSettings();
     renderWorkspace();
+    syncPageFromLocation();
     if (historyNotice) {
       showNotification(historyNotice);
       historyNotice = "";
@@ -1210,7 +1353,13 @@ composer.addEventListener("submit", async (event) => {
 
   try {
     const data = await streamChat(
-      { message, history, summary, context_result: contextResult },
+      {
+        message,
+        history,
+        summary,
+        context_result: contextResult,
+        ...(selectedModel ? { model: selectedModel } : {}),
+      },
       (streamEvent) => {
         if (streamEvent.type !== "tool_call" || !streamEvent.call) return;
         updateToolActivity(streamEvent.call);
@@ -1308,6 +1457,7 @@ promptInput.addEventListener("keydown", (event) => {
 });
 
 newChatButton.addEventListener("click", () => {
+  if (!developmentPage.hidden) showChatPage();
   void createChat();
 });
 themeToggleButton.addEventListener("click", () => {
@@ -1336,6 +1486,18 @@ apiQueryPanel.addEventListener("click", (event) => {
     event.clientY > bounds.bottom;
   if (outsidePanel) apiQueryPanel.close();
 });
+developmentLink.addEventListener("click", () => showDevelopmentPage());
+backToChatButton.addEventListener("click", () => showChatPage());
+modelSelect.addEventListener("change", () => {
+  selectedModel = modelSelect.value;
+  syncModelDescription();
+  const saved = saveSelectedModel(selectedModel, developmentSettings?.models || []);
+  modelSaveStatus.textContent = saved
+    ? "Saved for new questions"
+    : "Browser storage is unavailable";
+  modelSaveStatus.className = `settings-save-status ${saved ? "saved" : "error"}`;
+});
+window.addEventListener("popstate", syncPageFromLocation);
 window.addEventListener("storage", (event) => {
   if (event.key !== themeApi.STORAGE_KEY) return;
   themeApi.applyTheme(themeApi.loadTheme() || themeApi.systemTheme());
@@ -1347,7 +1509,9 @@ async function initializeApp() {
   syncThemeToggle();
   await initializeHistory();
   if (await checkAuth()) {
+    await loadDevelopmentSettings();
     renderWorkspace();
+    syncPageFromLocation();
     if (historyNotice) {
       showNotification(historyNotice);
       historyNotice = "";

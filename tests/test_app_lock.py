@@ -37,6 +37,41 @@ class AppLockTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["ok"])
 
+    def test_development_page_is_available_for_direct_navigation(self) -> None:
+        response = self.client.get("/settings/development")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Settings / Development", response.text)
+
+    def test_development_metadata_requires_unlock_and_describes_models_and_tools(self) -> None:
+        self.assertEqual(self.client.get("/api/settings/development").status_code, 401)
+        self.client.post(
+            "/api/auth/unlock",
+            json={"password": "test-app-password"},
+        )
+
+        response = self.client.get("/api/settings/development")
+        data = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(data["default_model"], [model["id"] for model in data["models"]])
+        self.assertIn("fetch_eurostat", [tool["name"] for tool in data["tools"]])
+        self.assertEqual(data["runtime"]["history"], "This browser (IndexedDB)")
+
+    def test_unknown_model_is_rejected_before_starting_an_agent(self) -> None:
+        self.client.post(
+            "/api/auth/unlock",
+            json={"password": "test-app-password"},
+        )
+
+        response = self.client.post(
+            "/api/chat",
+            json={"message": "hello", "model": "unknown/not-enabled"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not enabled", response.json()["detail"])
+
     def test_wrong_password_is_rejected(self) -> None:
         response = self.client.post(
             "/api/auth/unlock",
