@@ -136,7 +136,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "inspect_dimensions",
-            "description": "Inspect dimensions and sample categories for a Eurostat dataset code.",
+            "description": (
+                "Inspect dimensions and sample categories from Eurostat structural metadata "
+                "without requesting observations."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -1,0 +1,286 @@
+{
+  "schema_version": 1,
+  "scenario_id": "france_agriculture_manufacturing_inputs",
+  "turns": [
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "inspect-large-io",
+                    "type": "function",
+                    "function": {
+                      "name": "inspect_dimensions",
+                      "arguments": "{\"dataset\":\"naio_10_fcp_ii4\",\"matches\":[\"France\",\"2022\",\"Million euro\",\"Agriculture\",\"Manufacturing\"],\"reason\":\"Checking the structural metadata and valid codes without requesting the large observation cube.\"}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-large-io",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"naio_10_fcp_ii4\",\"params\":[\"freq=A\",\"ind_ava=A01\",\"ind_use=C10-12,C13-15,C16,C17,C18,C19,C20,C21,C22,C23,C24,C25,C26,C27,C28,C29,C30,C31_32,C33\",\"c_dest=FR\",\"unit=MIO_EUR\"],\"time\":[\"2022\"],\"reason\":\"Retrieving the bounded France 2022 agriculture-to-manufacturing slice across domestic and imported origins.\"}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "I retrieved the origin-resolved France 2022 agriculture-to-manufacturing slice from [naio_10_fcp_ii4](https://ec.europa.eu/eurostat/databrowser/view/naio_10_fcp_ii4/default/table?lang=en). It uses A01 as the supplying industry, the manufacturing activities C10-12 through C33 as using industries, million euro, and leaves country of origin open to include domestic and imported origins. The structured table shows a bounded preview of the returned observations."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "inspect_dimensions",
+          "arguments": {
+            "dataset": "naio_10_fcp_ii4",
+            "matches": ["France", "2022", "Million euro", "Agriculture", "Manufacturing"]
+          },
+          "output": {
+            "dataset": "naio_10_fcp_ii4",
+            "label": "EU inter-country input-output table at basic prices, industry by industry (2022 and onwards)",
+            "updated": null,
+            "inspection_source": "sdmx",
+            "dimensions": [
+              {
+                "id": "freq",
+                "label": "Time frequency",
+                "size": 1,
+                "sample_categories": [{"code": "A", "label": "Annual", "index": 0}]
+              },
+              {
+                "id": "ind_use",
+                "label": "Industries and final uses",
+                "size": 69,
+                "sample_categories": [
+                  {"code": "C10-12", "label": "Manufacture of food products; beverages and tobacco products", "index": 4},
+                  {"code": "C13-15", "label": "Manufacture of textiles, wearing apparel, leather and related products", "index": 5},
+                  {"code": "C16", "label": "Manufacture of wood and of products of wood and cork, except furniture", "index": 6},
+                  {"code": "C17", "label": "Manufacture of paper and paper products", "index": 7},
+                  {"code": "C18", "label": "Printing and reproduction of recorded media", "index": 8},
+                  {"code": "C19", "label": "Manufacture of coke and refined petroleum products", "index": 9},
+                  {"code": "C20", "label": "Manufacture of chemicals and chemical products", "index": 10},
+                  {"code": "C21", "label": "Manufacture of basic pharmaceutical products and pharmaceutical preparations", "index": 11},
+                  {"code": "C22", "label": "Manufacture of rubber and plastic products", "index": 12},
+                  {"code": "C23", "label": "Manufacture of other non-metallic mineral products", "index": 13},
+                  {"code": "C24", "label": "Manufacture of basic metals", "index": 14},
+                  {"code": "C25", "label": "Manufacture of fabricated metal products, except machinery and equipment", "index": 15},
+                  {"code": "C26", "label": "Manufacture of computer, electronic and optical products", "index": 16},
+                  {"code": "C27", "label": "Manufacture of electrical equipment", "index": 17},
+                  {"code": "C28", "label": "Manufacture of machinery and equipment n.e.c.", "index": 18},
+                  {"code": "C29", "label": "Manufacture of motor vehicles, trailers and semi-trailers", "index": 19},
+                  {"code": "C30", "label": "Manufacture of other transport equipment", "index": 20},
+                  {"code": "C31_32", "label": "Manufacture of furniture; other manufacturing", "index": 21},
+                  {"code": "C33", "label": "Repair and installation of machinery and equipment", "index": 22}
+                ]
+              },
+              {
+                "id": "ind_ava",
+                "label": "Industries, adjustments and value added",
+                "size": 70,
+                "sample_categories": [
+                  {"code": "A01", "label": "Crop and animal production, hunting and related service activities", "index": 0}
+                ]
+              },
+              {
+                "id": "c_dest",
+                "label": "Country of destination",
+                "size": 50,
+                "sample_categories": [{"code": "FR", "label": "France", "index": 9}]
+              },
+              {
+                "id": "unit",
+                "label": "Unit of measure",
+                "size": 1,
+                "sample_categories": [{"code": "MIO_EUR", "label": "Million euro", "index": 0}]
+              },
+              {
+                "id": "c_orig",
+                "label": "Country of origin",
+                "size": 51,
+                "sample_categories": [
+                  {"code": "AL", "label": "Albania", "index": 0},
+                  {"code": "AR", "label": "Argentina", "index": 1},
+                  {"code": "AT", "label": "Austria", "index": 2},
+                  {"code": "AU", "label": "Australia", "index": 3},
+                  {"code": "BE", "label": "Belgium", "index": 4}
+                ]
+              },
+              {
+                "id": "time",
+                "label": "Time",
+                "size": 3,
+                "sample_categories": [
+                  {"code": "2022", "label": "2022", "index": 0},
+                  {"code": "2023", "label": "2023", "index": 1},
+                  {"code": "2024", "label": "2024", "index": 2}
+                ]
+              }
+            ],
+            "matches": [
+              {
+                "query": "France",
+                "categories": [
+                  {"dimension": "c_dest", "code": "FR", "label": "France"},
+                  {"dimension": "c_orig", "code": "FR", "label": "France"}
+                ]
+              },
+              {"query": "2022", "categories": [{"dimension": "time", "code": "2022", "label": "2022"}]},
+              {"query": "Million euro", "categories": [{"dimension": "unit", "code": "MIO_EUR", "label": "Million euro"}]},
+              {
+                "query": "Agriculture",
+                "categories": [
+                  {"dimension": "ind_ava", "code": "A01", "label": "Crop and animal production, hunting and related service activities"},
+                  {"dimension": "ind_use", "code": "A01", "label": "Crop and animal production, hunting and related service activities"}
+                ]
+              },
+              {
+                "query": "Manufacturing",
+                "categories": [
+                  {"dimension": "ind_use", "code": "C10-12", "label": "Manufacture of food products; beverages and tobacco products"},
+                  {"dimension": "ind_use", "code": "C20", "label": "Manufacture of chemicals and chemical products"},
+                  {"dimension": "ind_use", "code": "C28", "label": "Manufacture of machinery and equipment n.e.c."}
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "naio_10_fcp_ii4",
+            "params": [
+              "freq=A",
+              "ind_ava=A01",
+              "ind_use=C10-12,C13-15,C16,C17,C18,C19,C20,C21,C22,C23,C24,C25,C26,C27,C28,C29,C30,C31_32,C33",
+              "c_dest=FR",
+              "unit=MIO_EUR"
+            ],
+            "time": ["2022"]
+          },
+          "output": {
+            "metadata": {
+              "label": "EU inter-country input-output table at basic prices, industry by industry (2022 and onwards)",
+              "updated": "2026-07-20T11:00:00+0200",
+              "total_rows": 950,
+              "returned_rows": 5,
+              "truncated": true,
+              "estimated_cells": 969
+            },
+            "rows": [
+              {
+                "value": 0.475,
+                "freq": "A",
+                "freq_label": "Annual",
+                "ind_use": "C10-12",
+                "ind_use_label": "Manufacture of food products; beverages and tobacco products",
+                "ind_ava": "A01",
+                "ind_ava_label": "Crop and animal production, hunting and related service activities",
+                "c_dest": "FR",
+                "c_dest_label": "France",
+                "unit": "MIO_EUR",
+                "unit_label": "Million euro",
+                "c_orig": "AL",
+                "c_orig_label": "Albania",
+                "time": "2022",
+                "time_label": "2022"
+              },
+              {
+                "value": 3.506,
+                "freq": "A",
+                "freq_label": "Annual",
+                "ind_use": "C10-12",
+                "ind_use_label": "Manufacture of food products; beverages and tobacco products",
+                "ind_ava": "A01",
+                "ind_ava_label": "Crop and animal production, hunting and related service activities",
+                "c_dest": "FR",
+                "c_dest_label": "France",
+                "unit": "MIO_EUR",
+                "unit_label": "Million euro",
+                "c_orig": "AR",
+                "c_orig_label": "Argentina",
+                "time": "2022",
+                "time_label": "2022"
+              },
+              {
+                "value": 8.011,
+                "freq": "A",
+                "freq_label": "Annual",
+                "ind_use": "C10-12",
+                "ind_use_label": "Manufacture of food products; beverages and tobacco products",
+                "ind_ava": "A01",
+                "ind_ava_label": "Crop and animal production, hunting and related service activities",
+                "c_dest": "FR",
+                "c_dest_label": "France",
+                "unit": "MIO_EUR",
+                "unit_label": "Million euro",
+                "c_orig": "AT",
+                "c_orig_label": "Austria",
+                "time": "2022",
+                "time_label": "2022"
+              },
+              {
+                "value": 56.079,
+                "freq": "A",
+                "freq_label": "Annual",
+                "ind_use": "C10-12",
+                "ind_use_label": "Manufacture of food products; beverages and tobacco products",
+                "ind_ava": "A01",
+                "ind_ava_label": "Crop and animal production, hunting and related service activities",
+                "c_dest": "FR",
+                "c_dest_label": "France",
+                "unit": "MIO_EUR",
+                "unit_label": "Million euro",
+                "c_orig": "AU",
+                "c_orig_label": "Australia",
+                "time": "2022",
+                "time_label": "2022"
+              },
+              {
+                "value": 108.223,
+                "freq": "A",
+                "freq_label": "Annual",
+                "ind_use": "C10-12",
+                "ind_use_label": "Manufacture of food products; beverages and tobacco products",
+                "ind_ava": "A01",
+                "ind_ava_label": "Crop and animal production, hunting and related service activities",
+                "c_dest": "FR",
+                "c_dest_label": "France",
+                "unit": "MIO_EUR",
+                "unit_label": "Million euro",
+                "c_orig": "BE",
+                "c_orig_label": "Belgium",
+                "time": "2022",
+                "time_label": "2022"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

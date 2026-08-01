@@ -11,7 +11,7 @@ Use Eurostat as the authoritative source when the user asks for European officia
 
 1. Reuse compatible structured Eurostat rows already present in the conversation. Do not search, inspect, or fetch the same data again.
 2. Identify the requested statistical concept, geography, time range, unit, and comparison grain. Separate details discoverable from Eurostat from preferences only the user can choose. For a relationship between two measures with no geography or period, default to a cross-sectional comparison of the individual countries shared by both datasets in their latest common year. Exclude supranational aggregates, state this reversible assumption, and do not pause to ask for geography or time.
-3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly without a catalogue search. Otherwise run at most one catalogue search per requested measure and inspect the best credible candidate for each measure; inspect a second candidate only when the first is genuinely ambiguous. Pass requested region, unit, product, and indicator labels as dimension matches so codes outside the samples are discovered rather than guessed. Do not fetch observations for competing interpretations.
+3. Perform bounded discovery before asking a clarification question. If the user supplied an exact dataset code, inspect it directly without a catalogue search. Otherwise run at most one catalogue search per requested measure and inspect the best credible candidate for each measure; inspect a second candidate only when the first is genuinely ambiguous. Dimension inspection is metadata-first: the helper reads SDMX structure, codelists, and available-position constraints without requesting observations, then uses a one-period Statistics API inspection only as a compatibility fallback. Pass requested region, unit, product, and indicator labels as dimension matches so codes outside the samples are discovered rather than guessed. Do not fetch observations for competing interpretations.
 4. After discovery, continue when one candidate clearly matches. State and proceed with a reasonable reversible assumption when the remaining ambiguity is minor. Ask one focused question when candidates represent materially different concepts, units, populations, or geographic grains.
 5. Ground clarification questions in the discovery: name the search performed, candidate dataset titles and codes, the relevant differences, and a recommended option when one is a better match.
 6. After the measure is resolved, fetch a bounded slice with `scripts/eurostat_api.py fetch <dataset_code> --param dim=value --last-time-period N`. Always include an explicit time selection or `last_time_period`; the host rejects unbounded time queries and data cubes above its configured cell and response-size limits.
@@ -80,6 +80,11 @@ substitute solar thermal.
 Use the Eurostat Statistics API endpoint:
 
 `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{dataset_code}`
+
+Inspect dataset structure without observations through Eurostat's SDMX metadata endpoints. The
+helper requests the dataset dataflow with referenced structure and codelists, plus its Data
+Constraint containing available positions. This path must be attempted before the Statistics API
+fallback so a large observation cube cannot block dimension-code discovery.
 
 Pass filters as repeated query parameters. Use dynamic time filters when appropriate:
 

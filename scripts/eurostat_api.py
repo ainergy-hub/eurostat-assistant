@@ -20,6 +20,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,8 @@ from typing import Any
 BASE = "https://ec.europa.eu/eurostat/api/dissemination"
 TOC_URL = f"{BASE}/catalogue/toc/txt?lang=en"
 DATA_URL = f"{BASE}/statistics/1.0/data"
+SDMX_DATAFLOW_URL = f"{BASE}/sdmx/2.1/dataflow"
+SDMX_CONSTRAINT_URL = f"{BASE}/sdmx/3.0/structure/dataconstraint"
 LIMITS_PATH = Path(__file__).resolve().parent / "agent_limits.json"
 if not LIMITS_PATH.exists():
     LIMITS_PATH = Path(__file__).resolve().parent.parent / "agent_limits.json"
@@ -62,6 +65,16 @@ SEARCH_MODIFIER_WORDS = {
     "monthly",
     "quarterly",
     "region",
+}
+DIMENSION_MATCH_TOKEN_ALIASES = {
+    "manufactured": "manufacture",
+    "manufacturer": "manufacture",
+    "manufacturers": "manufacture",
+    "manufacturing": "manufacture",
+}
+DIMENSION_MATCH_QUERY_EXPANSIONS = {
+    "agriculture": "crop animal production hunting",
+    "agricultural": "crop animal production hunting",
 }
 
 
@@ -240,6 +253,25 @@ def build_url(dataset: str, params: list[tuple[str, str]]) -> str:
     return f"{DATA_URL}/{urllib.parse.quote(dataset)}?{urllib.parse.urlencode(query)}"
 
 
+def build_sdmx_dataflow_url(dataset: str) -> str:
+    """Return a structure-only request including the dataset's referenced codelists."""
+    code = urllib.parse.quote(dataset.upper())
+    query = urllib.parse.urlencode(
+        {
+            "references": "descendants",
+            "detail": "referencepartial",
+            "compress": "false",
+        }
+    )
+    return f"{SDMX_DATAFLOW_URL}/ESTAT/{code}/1.0?{query}"
+
+
+def build_sdmx_constraint_url(dataset: str) -> str:
+    """Return the dataset constraint containing positions used by observations."""
+    code = urllib.parse.quote(dataset.upper())
+    return f"{SDMX_CONSTRAINT_URL}/ESTAT/{code}/1.0?compress=false"
+
+
 def parse_param(values: list[str]) -> list[tuple[str, str]]:
     params: list[tuple[str, str]] = []
     for value in values:
@@ -269,7 +301,8 @@ def _search_text(value: str) -> str:
     without_marks = "".join(
         character for character in normalized if not unicodedata.combining(character)
     )
-    return " ".join(re.findall(r"[a-z0-9]+", without_marks))
+    tokens = re.findall(r"[a-z0-9]+", without_marks)
+    return " ".join(DIMENSION_MATCH_TOKEN_ALIASES.get(token, token) for token in tokens)
 
 
 def match_dimension_categories(
@@ -278,16 +311,30 @@ def match_dimension_categories(
     limit: int = 8,
 ) -> list[dict[str, Any]]:
     """Find bounded label/code matches across every complete dataset dimension."""
+    dimensions = []
+    for dim_id in data.get("id", []):
+        dimensions.append({"id": dim_id, "categories": categories(data, dim_id)})
+    return match_catalog_categories(dimensions, queries, limit)
+
+
+def match_catalog_categories(
+    dimensions: list[dict[str, Any]],
+    queries: list[str],
+    limit: int = 8,
+) -> list[dict[str, Any]]:
+    """Find bounded matches in a normalized dimension/category catalog."""
     results: list[dict[str, Any]] = []
     for raw_query in queries:
         query = raw_query.strip()
-        normalized_query = _search_text(query)
+        expanded_query = DIMENSION_MATCH_QUERY_EXPANSIONS.get(query.casefold(), query)
+        normalized_query = _search_text(expanded_query)
         if not normalized_query:
             continue
         query_tokens = set(normalized_query.split())
         candidates: list[tuple[float, str, str, str]] = []
-        for dim_id in data.get("id", []):
-            for item in categories(data, dim_id):
+        for dimension in dimensions:
+            dim_id = str(dimension.get("id") or "")
+            for item in dimension.get("categories", []):
                 code = str(item["code"])
                 label = str(item["label"])
                 normalized_code = _search_text(code)
@@ -325,26 +372,220 @@ def match_dimension_categories(
     return results
 
 
-def dimensions(dataset: str, matches: list[str] | None = None) -> None:
-    data = get_json(build_url(dataset, [("lastTimePeriod", "1")]))
-    result = {
+def _xml_local_name(element: ET.Element) -> str:
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def _xml_name(element: ET.Element) -> str | None:
+    names = [child for child in element if _xml_local_name(child) == "Name"]
+    for child in names:
+        language = child.attrib.get("{http://www.w3.org/XML/1998/namespace}lang", "")
+        if language.casefold() == "en" and child.text:
+            return child.text.strip()
+    for child in names:
+        if child.text:
+            return child.text.strip()
+    return None
+
+
+def _reference_id(element: ET.Element, container_name: str) -> str | None:
+    for container in element.iter():
+        if _xml_local_name(container) != container_name:
+            continue
+        for descendant in container.iter():
+            if _xml_local_name(descendant) == "Ref" and descendant.attrib.get("id"):
+                return str(descendant.attrib["id"])
+    return None
+
+
+def _parse_constraint_positions(xml_text: str) -> dict[str, set[str]]:
+    root = ET.fromstring(xml_text)
+    positions: dict[str, set[str]] = {}
+    for key_value in root.iter():
+        if _xml_local_name(key_value) != "KeyValue":
+            continue
+        dimension_id = key_value.attrib.get("id")
+        if not dimension_id:
+            continue
+        values = {
+            str(value.text).strip()
+            for value in key_value.iter()
+            if _xml_local_name(value) == "Value" and value.text and value.text.strip()
+        }
+        if values:
+            positions.setdefault(str(dimension_id).casefold(), set()).update(values)
+    return positions
+
+
+def parse_sdmx_dimensions(
+    dataflow_xml: str,
+    constraint_xml: str,
+    dataset: str,
+) -> dict[str, Any]:
+    """Parse structure-only SDMX responses into the inspector's normalized catalog."""
+    root = ET.fromstring(dataflow_xml)
+    constraints = _parse_constraint_positions(constraint_xml)
+
+    concept_labels: dict[str, str] = {}
+    codelists: dict[str, list[dict[str, Any]]] = {}
+    dataflow_label: str | None = None
+    requested_code = dataset.casefold()
+
+    for element in root.iter():
+        local_name = _xml_local_name(element)
+        element_id = str(element.attrib.get("id") or "")
+        if local_name == "Dataflow" and element_id.casefold() == requested_code:
+            dataflow_label = _xml_name(element)
+        elif local_name == "Concept" and element_id:
+            concept_labels[element_id.casefold()] = _xml_name(element) or element_id
+        elif local_name == "Codelist" and element_id:
+            items: list[dict[str, Any]] = []
+            for code in element.iter():
+                if _xml_local_name(code) != "Code" or not code.attrib.get("id"):
+                    continue
+                code_id = str(code.attrib["id"])
+                items.append(
+                    {
+                        "code": code_id,
+                        "label": _xml_name(code) or code_id,
+                        "index": len(items),
+                    }
+                )
+            codelists[element_id.casefold()] = items
+
+    dimensions: list[dict[str, Any]] = []
+    for dimension_list in root.iter():
+        if _xml_local_name(dimension_list) != "DimensionList":
+            continue
+        for dimension in dimension_list:
+            dimension_kind = _xml_local_name(dimension)
+            if dimension_kind not in {
+                "Dimension",
+                "MeasureDimension",
+                "TimeDimension",
+            }:
+                continue
+            sdmx_dimension_id = str(dimension.attrib.get("id") or "")
+            if not sdmx_dimension_id:
+                continue
+            dimension_id = (
+                "time"
+                if dimension_kind == "TimeDimension"
+                or sdmx_dimension_id.casefold() == "time_period"
+                else sdmx_dimension_id
+            )
+            concept_id = _reference_id(dimension, "ConceptIdentity")
+            codelist_id = _reference_id(dimension, "Enumeration")
+            catalog = list(codelists.get(str(codelist_id).casefold(), []))
+            available = constraints.get(sdmx_dimension_id.casefold(), set())
+            if not available:
+                available = constraints.get(dimension_id.casefold(), set())
+            if available:
+                by_code = {str(item["code"]): item for item in catalog}
+                ordered_codes = [
+                    str(item["code"]) for item in catalog if str(item["code"]) in available
+                ]
+                ordered_codes.extend(sorted(available - set(ordered_codes)))
+                catalog = [
+                    {
+                        "code": code,
+                        "label": str(by_code.get(code, {}).get("label") or code),
+                        "index": index,
+                    }
+                    for index, code in enumerate(ordered_codes)
+                ]
+            if not catalog:
+                raise ValueError(
+                    f"SDMX metadata did not provide categories for dimension {dimension_id}."
+                )
+            try:
+                position = int(dimension.attrib.get("position", len(dimensions) + 1))
+            except ValueError:
+                position = len(dimensions) + 1
+            dimensions.append(
+                {
+                    "id": dimension_id,
+                    "label": concept_labels.get(str(concept_id).casefold(), dimension_id),
+                    "position": position,
+                    "categories": catalog,
+                }
+            )
+        if dimensions:
+            break
+
+    if not dimensions:
+        raise ValueError("SDMX metadata did not contain a dimension list.")
+    dimensions.sort(key=lambda item: int(item["position"]))
+    return {
         "dataset": dataset,
-        "label": data.get("label"),
-        "updated": data.get("updated"),
-        "dimensions": [],
+        "label": dataflow_label,
+        "updated": None,
+        "inspection_source": "sdmx",
+        "dimensions": dimensions,
     }
+
+
+def inspect_sdmx_dimensions(dataset: str) -> dict[str, Any]:
+    dataflow_xml = get_text(build_sdmx_dataflow_url(dataset))
+    constraint_xml = get_text(build_sdmx_constraint_url(dataset))
+    return parse_sdmx_dimensions(dataflow_xml, constraint_xml, dataset)
+
+
+def inspect_statistics_dimensions(dataset: str) -> dict[str, Any]:
+    data = get_json(build_url(dataset, [("lastTimePeriod", "1")]))
+    normalized_dimensions = []
     for dim_id, size in zip(data.get("id", []), data.get("size", [])):
-        cats = categories(data, dim_id)
-        result["dimensions"].append(
+        normalized_dimensions.append(
             {
                 "id": dim_id,
                 "label": data.get("dimension", {}).get(dim_id, {}).get("label", dim_id),
-                "size": size,
+                "position": len(normalized_dimensions) + 1,
+                "categories": categories(data, dim_id),
+                "reported_size": size,
+            }
+        )
+    return {
+        "dataset": dataset,
+        "label": data.get("label"),
+        "updated": data.get("updated"),
+        "inspection_source": "statistics_fallback",
+        "dimensions": normalized_dimensions,
+    }
+
+
+def dimensions(dataset: str, matches: list[str] | None = None) -> None:
+    try:
+        catalog = inspect_sdmx_dimensions(dataset)
+    except (ET.ParseError, OSError, SystemExit, ValueError) as metadata_error:
+        try:
+            catalog = inspect_statistics_dimensions(dataset)
+        except (OSError, SystemExit, ValueError) as fallback_error:
+            raise SystemExit(
+                "Could not inspect Eurostat dataset dimensions. "
+                f"SDMX metadata failed: {metadata_error}. "
+                f"Statistics API fallback failed: {fallback_error}."
+            ) from fallback_error
+
+    result = {
+        "dataset": dataset,
+        "label": catalog.get("label"),
+        "updated": catalog.get("updated"),
+        "inspection_source": catalog.get("inspection_source"),
+        "dimensions": [],
+    }
+    normalized_dimensions = catalog.get("dimensions", [])
+    for dimension in normalized_dimensions:
+        cats = dimension.get("categories", [])
+        result["dimensions"].append(
+            {
+                "id": dimension["id"],
+                "label": dimension.get("label", dimension["id"]),
+                "size": dimension.get("reported_size", len(cats)),
                 "sample_categories": cats[:30],
             }
         )
     if matches:
-        result["matches"] = match_dimension_categories(data, matches)
+        result["matches"] = match_catalog_categories(normalized_dimensions, matches)
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 

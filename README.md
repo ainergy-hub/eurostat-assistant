@@ -17,7 +17,8 @@ Browser or a general-purpose business intelligence platform.
 Eurostat Assistant can:
 
 - search Eurostat's table-of-contents metadata for candidate datasets;
-- inspect dataset-specific dimensions, category codes, labels, and update dates;
+- inspect dataset-specific dimensions, category codes, and labels from SDMX structural metadata
+  without downloading observations, with a Statistics API compatibility fallback;
 - fetch and flatten filtered JSON-stat 2.0 observations;
 - preserve the dataset code, title, applied filters, update date, flags, and reproducible API URL;
 - return up to 500 observations in a sortable, filterable table with CSV export;
@@ -49,6 +50,7 @@ not require an API key; the optional web app requires an OpenRouter credential t
 ## Repository layout
 
 - `SKILL.md`: reusable Eurostat agent workflow and answering rules.
+- `DEVELOPMENT_HISTORY.md`: chronological change record with commit context and design reasoning.
 - `agent_limits.json`: authoritative runtime, query-size, context, and per-tool limits.
 - `scripts/eurostat_api.py`: standard-library search, dimensions, and fetch CLI.
 - `references/eurostat-api.md`: API patterns and troubleshooting notes.
@@ -163,7 +165,7 @@ public so Railway can verify a locked deployment, but it exposes only service re
    messages, and the most recent structured chart result to `POST /api/chat/stream`.
 2. FastAPI starts a short-lived local child process with a minimal environment, a per-request
    temporary catalogue cache, and a 180-second timeout.
-3. The model can use four allow-listed tools: dataset search, dimension inspection, bounded fetch,
+3. The model can use four allow-listed tools: dataset search, metadata-first dimension inspection, bounded fetch,
    and validated publication of a selected, re-charted, or paired result.
 4. The backend streams each actual tool invocation to the browser as newline-delimited JSON.
 5. The host assigns each successful fetch a result ID, publishes a single fetch automatically or
