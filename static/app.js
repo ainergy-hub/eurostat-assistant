@@ -50,6 +50,7 @@ const promptInput = document.querySelector("#prompt");
 const sendButton = document.querySelector("#send");
 const statusBadge = document.querySelector("#status");
 const statusWrap = document.querySelector(".status-wrap");
+const topbar = document.querySelector(".topbar");
 const pendingTemplate = document.querySelector("#pending-template");
 const hero = document.querySelector("#hero");
 const chatList = document.querySelector("#chat-list");
@@ -75,7 +76,7 @@ const notificationMessage = document.querySelector("#notification-message");
 const notificationDismiss = document.querySelector("#notification-dismiss");
 const developmentLink = document.querySelector("#development-link");
 const developmentPage = document.querySelector("#development-page");
-const backToChatButton = document.querySelector("#back-to-chat");
+const settingsCloseButton = document.querySelector("#settings-close");
 const chatViews = document.querySelectorAll("[data-chat-view]");
 const themeApi = globalThis.EurostatTheme;
 
@@ -146,13 +147,17 @@ function element(tag, className, text) {
 
 function showDevelopmentPage({ updateHistory = true } = {}) {
   appLayout.classList.add("settings-view");
+  document.body.classList.add("settings-open");
+  sidebar.inert = true;
+  topbar.inert = true;
   chatViews.forEach((view) => { view.hidden = true; });
   developmentPage.hidden = false;
   developmentLink.classList.add("active");
   developmentLink.setAttribute("aria-current", "page");
+  developmentLink.hidden = true;
   currentChatTitle.textContent = "Development";
   contextStatus.hidden = true;
-  downloadChatLogButton.hidden = false;
+  downloadChatLogButton.hidden = true;
   downloadChatLogButton.disabled = true;
   downloadChatLogButton.title = "Return to a chat to download its log";
   downloadChatLogButton.setAttribute("aria-label", "Download log unavailable in settings");
@@ -160,15 +165,20 @@ function showDevelopmentPage({ updateHistory = true } = {}) {
   if (updateHistory && window.location.pathname !== "/settings/development") {
     window.history.pushState({ view: "development" }, "", "/settings/development");
   }
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  developmentPage.scrollTo({ top: 0, behavior: "smooth" });
+  window.setTimeout(() => settingsCloseButton.focus(), 0);
 }
 
 function showChatPage({ updateHistory = true } = {}) {
   appLayout.classList.remove("settings-view");
+  document.body.classList.remove("settings-open");
+  sidebar.inert = false;
+  topbar.inert = false;
   developmentPage.hidden = true;
   chatViews.forEach((view) => { view.hidden = false; });
   developmentLink.classList.remove("active");
   developmentLink.removeAttribute("aria-current");
+  developmentLink.hidden = false;
   downloadChatLogButton.hidden = false;
   renderWorkspace();
   closeSidebar();
@@ -785,15 +795,18 @@ async function checkHealth() {
     }
     const data = await response.json();
     if (data.agent_ready) {
-      statusBadge.textContent = "Agent ready";
-      statusWrap.className = "status-wrap ready";
+      statusBadge.textContent = "";
+      statusWrap.className = "status-wrap";
+      statusWrap.hidden = true;
       return;
     }
     statusBadge.textContent = "Setup required";
     statusWrap.className = "status-wrap error";
+    statusWrap.hidden = false;
   } catch {
     statusBadge.textContent = "Backend offline";
     statusWrap.className = "status-wrap error";
+    statusWrap.hidden = false;
   }
 }
 
@@ -1018,7 +1031,15 @@ apiQueryPanel.addEventListener("click", (event) => {
   if (outsidePanel) apiQueryPanel.close();
 });
 developmentLink.addEventListener("click", () => showDevelopmentPage());
-backToChatButton.addEventListener("click", () => showChatPage());
+settingsCloseButton.addEventListener("click", () => {
+  showChatPage();
+  developmentLink.focus();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || developmentPage.hidden) return;
+  showChatPage();
+  developmentLink.focus();
+});
 window.addEventListener("popstate", syncPageFromLocation);
 window.addEventListener("storage", (event) => {
   if (event.key !== themeApi.STORAGE_KEY) return;

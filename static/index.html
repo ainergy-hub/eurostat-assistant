@@ -10,7 +10,7 @@
     <title>Eurostat Assistant — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260804-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260804-3" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -155,14 +155,35 @@
               </svg>
             </button>
             <span class="context-status" id="context-status" hidden>Older context compacted</span>
-            <div class="status-wrap">
+            <div class="status-wrap" aria-live="polite" hidden>
               <span class="status-dot" aria-hidden="true"></span>
-              <span class="status" id="status">Checking connection</span>
+              <span class="status" id="status"></span>
             </div>
           </div>
         </header>
 
-        <section class="development-page" id="development-page" aria-labelledby="development-title" hidden>
+        <section
+          class="development-page"
+          id="development-page"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="development-page-title"
+          hidden
+        >
+          <header class="development-topbar">
+            <strong class="thread-title" id="development-page-title">Development settings</strong>
+            <button
+              class="settings-close-button"
+              id="settings-close"
+              type="button"
+              title="Close settings"
+              aria-label="Close settings"
+            >
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5l14 14M19 5 5 19"></path>
+              </svg>
+            </button>
+          </header>
           <header class="development-hero">
             <div class="development-heading">
               <p class="eyebrow">Settings / Development</p>
@@ -173,10 +194,6 @@
                 Choose the model used for new questions and inspect the four bounded tools,
                 query safeguards, runtime, and privacy rules behind each answer.
               </p>
-              <button class="secondary-button back-to-chat" id="back-to-chat" type="button">
-                <span aria-hidden="true">←</span>
-                <span>Back to investigation</span>
-              </button>
             </div>
           </header>
 
@@ -429,6 +446,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260804-1" type="module"></script>
+    <script src="/static/app.js?v=20260804-3" type="module"></script>
   </body>
 </html>

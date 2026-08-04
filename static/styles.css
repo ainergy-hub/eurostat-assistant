@@ -113,6 +113,10 @@ body {
   line-height: 1.6;
 }
 
+body.settings-open {
+  overflow: hidden;
+}
+
 .notification {
   position: fixed;
   z-index: 120;
@@ -333,13 +337,10 @@ a {
   min-height: 100vh;
 }
 
-.app-layout.settings-view {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 .settings-view > .sidebar,
-.settings-view > .sidebar-backdrop {
-  display: none;
+.settings-view > .sidebar-backdrop,
+.settings-view > .shell > .topbar {
+  visibility: hidden;
 }
 
 .sidebar {
@@ -741,7 +742,8 @@ th {
 .theme-toggle-button,
 .development-button,
 .download-log-button,
-.lock-app-button {
+.lock-app-button,
+.settings-close-button {
   width: 44px;
   min-height: 44px;
   flex: 0 0 44px;
@@ -772,7 +774,8 @@ th {
 .theme-toggle-button:hover,
 .development-button:hover,
 .download-log-button:hover,
-.lock-app-button:hover {
+.lock-app-button:hover,
+.settings-close-button:hover {
   border-color: var(--color-text-primary);
 }
 
@@ -835,10 +838,6 @@ th {
   height: 7px;
   flex: 0 0 auto;
   background: var(--color-warning);
-}
-
-.status-wrap.ready .status-dot {
-  background: var(--color-good);
 }
 
 .status-wrap.error {
@@ -1744,7 +1743,34 @@ footer a:hover {
 }
 
 .development-page {
-  padding: var(--space-8) 0 var(--space-10);
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  overflow-y: auto;
+  background: var(--color-bg);
+  padding: 0 0 var(--space-10);
+}
+
+.development-topbar,
+.development-hero,
+.development-summary,
+.development-page > .settings-stack {
+  width: min(1120px, calc(100% - 56px));
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.development-topbar {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  border-bottom: var(--border-hairline);
+  background: var(--color-bg);
 }
 
 .development-hero {
@@ -1774,10 +1800,6 @@ footer a:hover {
   color: var(--color-text-muted);
   font-size: 0.78rem;
   line-height: 1.75;
-}
-
-.back-to-chat {
-  width: fit-content;
 }
 
 .development-summary {
@@ -2578,8 +2600,15 @@ footer a:hover {
     font-size: 0.88rem;
   }
 
-  .development-page {
-    padding-top: var(--space-4);
+  .development-topbar,
+  .development-hero,
+  .development-summary,
+  .development-page > .settings-stack {
+    width: min(100% - 24px, 1120px);
+  }
+
+  .development-topbar {
+    min-height: 68px;
   }
 
   .development-hero,
@@ -2602,10 +2631,6 @@ footer a:hover {
 
   .development-intro p {
     font-size: 0.82rem;
-  }
-
-  .back-to-chat {
-    width: 100%;
   }
 
   .development-metric {
