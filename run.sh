@@ -16,24 +16,18 @@ if [ -z "${OPENROUTER_API_KEY:-}" ]; then
   exit 1
 fi
 
-if [ -z "${OPENROUTER_MODEL:-}" ] && [ -n "${OPENAI_MODEL:-}" ]; then
-  export OPENROUTER_MODEL="$OPENAI_MODEL"
+if [ -z "${OPENROUTER_MODEL_OPTIONS:-}" ]; then
+  echo "Missing OPENROUTER_MODEL_OPTIONS. Define the comma-separated model list in .env." >&2
+  exit 1
 fi
 
-if [ -z "${OPENROUTER_MODEL:-}" ]; then
-  export OPENROUTER_MODEL="openai/gpt-5.6-luna-pro"
-fi
-
-case "$OPENROUTER_MODEL" in
-  */*) ;;
-  *) export OPENROUTER_MODEL="openai/$OPENROUTER_MODEL" ;;
-esac
+EUROSTAT_DEFAULT_MODEL="${OPENROUTER_MODEL_OPTIONS%%,*}"
 
 PORT="${PORT:-8000}"
 HOST="${HOST:-0.0.0.0}"
 
 echo "Starting Eurostat Assistant on http://${HOST}:${PORT}"
-echo "Using OpenRouter model: ${OPENROUTER_MODEL}"
+echo "Using OpenRouter model: ${EUROSTAT_DEFAULT_MODEL}"
 
 exec uv run uvicorn app.main:app \
   --host "$HOST" \

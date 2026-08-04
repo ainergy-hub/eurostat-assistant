@@ -175,12 +175,11 @@ class ReplayTools:
 
 
 def _model_name() -> str:
-    model = (
-        os.getenv("OPENROUTER_MODEL")
-        or os.getenv("OPENAI_MODEL")
-        or "openai/gpt-5.6-luna-pro"
-    )
-    return model if "/" in model else f"openai/{model}"
+    configured = os.getenv("OPENROUTER_MODEL_OPTIONS", "")
+    models = [item.strip() for item in configured.split(",") if item.strip()]
+    if not models:
+        raise ScenarioFailure("Missing OPENROUTER_MODEL_OPTIONS in the environment.")
+    return models[0]
 
 
 def _row_matches(row: dict[str, Any], expected: dict[str, Any]) -> bool:
@@ -471,7 +470,7 @@ def execute_scenario(
             ],
             "summary": "",
             "context_result": context_result,
-            "model": _model_name(),
+            "model": "test/replay-model" if mode == "replay" else _model_name(),
         }
         response = run(payload, chat_client=chat_client, tool_executor=tool_executor)
         if mode == "replay":

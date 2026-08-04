@@ -38,6 +38,7 @@ const appLockPassword = document.querySelector("#app-lock-password");
 const appLockError = document.querySelector("#app-lock-error");
 const appUnlockButton = document.querySelector("#app-unlock-button");
 const lockAppButton = document.querySelector("#lock-app");
+const appLayout = document.querySelector("#app-layout");
 const chat = document.querySelector("#chat");
 const composer = document.querySelector("#composer");
 const promptInput = document.querySelector("#prompt");
@@ -235,13 +236,17 @@ async function loadDevelopmentSettings() {
 }
 
 function showDevelopmentPage({ updateHistory = true } = {}) {
+  appLayout.classList.add("settings-view");
   chatViews.forEach((view) => { view.hidden = true; });
   developmentPage.hidden = false;
   developmentLink.classList.add("active");
   developmentLink.setAttribute("aria-current", "page");
   currentChatTitle.textContent = "Development";
   contextStatus.hidden = true;
-  downloadChatLogButton.hidden = true;
+  downloadChatLogButton.hidden = false;
+  downloadChatLogButton.disabled = true;
+  downloadChatLogButton.title = "Return to a chat to download its log";
+  downloadChatLogButton.setAttribute("aria-label", "Download log unavailable in settings");
   closeSidebar();
   if (updateHistory && window.location.pathname !== "/settings/development") {
     window.history.pushState({ view: "development" }, "", "/settings/development");
@@ -250,6 +255,7 @@ function showDevelopmentPage({ updateHistory = true } = {}) {
 }
 
 function showChatPage({ updateHistory = true } = {}) {
+  appLayout.classList.remove("settings-view");
   developmentPage.hidden = true;
   chatViews.forEach((view) => { view.hidden = false; });
   developmentLink.classList.remove("active");
@@ -676,7 +682,7 @@ async function selectChat(id) {
   const previous = activeChat();
   if (!record) return;
   if (id === state.activeChatId) {
-    closeSidebar();
+    showChatPage();
     return;
   }
 
@@ -693,8 +699,7 @@ async function selectChat(id) {
       if (previousIndex >= 0) state.chats[previousIndex] = unloadedRecord(previous);
     }
     state.activeChatId = id;
-    renderWorkspace();
-    closeSidebar();
+    showChatPage();
   } catch {
     showNotification("This browser could not open that saved investigation.");
   }
@@ -1258,6 +1263,9 @@ function renderWorkspace() {
       ? `Download log for ${record.title}`
       : "Download log (available after the first message)",
   );
+  downloadChatLogButton.title = record.messages.length
+    ? `Download log for ${record.title}`
+    : "Download log available after the first message";
   const summary = buildContextSummary(record.messages);
   contextStatus.hidden = !summary;
   contextStatus.title = summary

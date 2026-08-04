@@ -111,15 +111,13 @@ Add your credentials to `.env`:
 
 ```dotenv
 OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=openai/gpt-5.6-luna-pro
-OPENROUTER_MODEL_OPTIONS=openai/gpt-5.6-luna-pro,openai/gpt-4.1-mini,openai/gpt-4.1,moonshotai/kimi-k2-thinking
+OPENROUTER_MODEL_OPTIONS=provider/default-model,provider/optional-model
 APP_PASSWORD=choose-a-strong-password
 LOCAL_AGENT_CONCURRENCY=2
 ```
 
-`OPENROUTER_MODEL` is optional and defaults to `openai/gpt-5.6-luna-pro`.
-`OPENROUTER_MODEL_OPTIONS` controls the models shown under **Development → Model**. It is optional
-and defaults to the four models shown above; the configured default is always included. A browser's
+`OPENROUTER_MODEL_OPTIONS` is the single source of truth for models. It is required, controls the
+models shown under **Development → Model**, and uses its first entry as the default. A browser's
 selection applies to new questions only and remains local to that browser.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
@@ -148,14 +146,14 @@ promoting a deployment.
 
    ```dotenv
    OPENROUTER_API_KEY=your_openrouter_api_key
-   OPENROUTER_MODEL=openai/gpt-5.6-luna-pro
+   OPENROUTER_MODEL_OPTIONS=provider/default-model,provider/optional-model
    APP_PASSWORD=choose-a-strong-password
    LOCAL_AGENT_CONCURRENCY=2
    ```
 
 3. Generate a public domain from the service's **Settings → Networking** page.
 
-Do not set `PORT`; Railway injects it automatically. `OPENROUTER_MODEL` is optional.
+Do not set `PORT`; Railway injects it automatically.
 `APP_PASSWORD` is strongly recommended for a public deployment. The health endpoint is intentionally
 public so Railway can verify a locked deployment, but it exposes only service readiness booleans.
 

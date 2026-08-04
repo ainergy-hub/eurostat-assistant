@@ -1517,7 +1517,7 @@ def run(
     chat_client: Any = None,
     tool_executor: Any = None,
 ) -> dict[str, Any]:
-    model = payload.get("model") or "openai/gpt-5.6-luna-pro"
+    model = payload["model"]
     context_result = payload.get("context_result")
     messages = build_messages(payload)
     chat = chat_client or openrouter_chat

@@ -37,13 +37,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 SESSION_COOKIE = "eurostat_lens_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
 APP_VERSION = "0.3.0"
-DEFAULT_MODEL_OPTIONS = (
-    "openai/gpt-5.6-luna-pro",
-    "openai/gpt-4.1-mini",
-    "openai/gpt-4.1",
-    "moonshotai/kimi-k2-thinking",
-)
-MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
+MODEL_ID_PATTERN = re.compile(r"^~?[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 
 
 def _app_password() -> str:
@@ -97,25 +91,20 @@ async def require_app_unlock(request: Request, call_next):
 
 
 def _model_name() -> str:
-    model = (
-        os.getenv("OPENROUTER_MODEL")
-        or os.getenv("OPENAI_MODEL")
-        or "openai/gpt-5.6-luna-pro"
-    )
-    if "/" not in model:
-        return f"openai/{model}"
-    return model
+    return _available_models()[0]
 
 
 def _available_models() -> list[str]:
     configured = os.getenv("OPENROUTER_MODEL_OPTIONS", "")
     candidates = [item.strip() for item in configured.split(",") if item.strip()]
     if not candidates:
-        candidates = list(DEFAULT_MODEL_OPTIONS)
-
-    default_model = _model_name()
-    ordered = [default_model, *candidates]
-    return list(dict.fromkeys(model for model in ordered if MODEL_ID_PATTERN.fullmatch(model)))
+        raise RuntimeError(
+            "Missing OPENROUTER_MODEL_OPTIONS. Define the comma-separated model list in .env."
+        )
+    invalid = [model for model in candidates if not MODEL_ID_PATTERN.fullmatch(model)]
+    if invalid:
+        raise RuntimeError("OPENROUTER_MODEL_OPTIONS contains an invalid model ID.")
+    return list(dict.fromkeys(candidates))
 
 
 def _model_label(model: str) -> str:

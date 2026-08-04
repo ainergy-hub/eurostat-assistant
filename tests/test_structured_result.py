@@ -24,13 +24,17 @@ from app.sandbox_agent import (
     contains_tool_markup,
     legacy_tool_calls,
     response_result,
-    run,
+    run as run_agent,
     text_content,
     tool_call_reason,
     tool_arguments,
     tool_output_preview,
     validate_fetch_arguments,
 )
+
+
+def run(payload, *args, **kwargs):
+    return run_agent({"model": "test/model", **payload}, *args, **kwargs)
 
 
 class StructuredResultTests(unittest.TestCase):
