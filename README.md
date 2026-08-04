@@ -56,10 +56,15 @@ not require an API key; the optional web app requires an OpenRouter credential t
 - `references/eurostat-api.md`: API patterns and troubleshooting notes.
 - `references/chart-selection.md`: chart-purpose matrix and safe modification rules.
 - `agents/openai.yaml`: Codex skill display metadata.
-- `app/sandbox_agent.py`: allow-listed tool-calling agent executed in a local child process.
+- `app/agent_config.py`: shared runtime limits, chart rules, and model tool schemas.
+- `app/agent_model.py`: OpenRouter transport and prompt/message construction.
+- `app/agent_tools.py`: allow-listed helper execution, validation, and tool-call protocol handling.
+- `app/agent_results.py`: structured result, chart, table, provenance, and publication builders.
+- `app/sandbox_agent.py`: thin agent orchestration loop executed in a local child process.
 - `app/local_agent.py`: local process lifecycle, event streaming, concurrency, and result handling.
 - `app/main.py`: FastAPI endpoints and validated public response models.
-- `static/`: browser UI, investigation state, Vega-Lite charts, tables, and CSV export.
+- `static/`: modular browser UI covering chat transport, development settings, tool traces,
+  investigation state, Vega-Lite charts, tables, provenance, and CSV export.
 - `tests/`: helper, response-contract, chart, Markdown, and browser-state tests.
 
 ## Use the Codex skill
@@ -288,18 +293,21 @@ Vega-Lite, HTML, or JavaScript.
 ## Tests
 
 ```bash
+uv sync --frozen
+npm ci
+npx playwright install chromium
 uv run python -m unittest discover -v
 node --check static/app.js
 node --check static/chat_store.js
 node --check static/chart.js
-node tests/chart.test.mjs
-node tests/chat_state.test.mjs
-node tests/chat_store.test.mjs
-node tests/markdown_renderer.test.mjs
+npm run test:unit
+npm run test:smoke
 uv run python -m tests.prompt_regression replay
 ```
 
-The automated suite uses recorded JSON-stat-shaped fixtures and does not require API keys. A small,
+The Playwright smoke test starts the assembled FastAPI app with isolated test configuration, loads
+it in headless Chrome, and fails on browser console or runtime errors. The remaining automated
+suite uses recorded JSON-stat-shaped fixtures. None of these tests require real API keys. A small,
 filtered live request is useful as a separate canary because Eurostat always exposes the latest
 dataset version.
 

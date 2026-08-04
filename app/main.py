@@ -17,15 +17,18 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .local_agent import AgentConfig, AgentError, run_eurostat_agent
-from .sandbox_agent import MAX_RESULT_ROWS, MAX_TOOL_CALLS, TOOL_CALL_LIMITS, TOOLS
-from .sandbox_agent import (
+from .agent_config import (
     MAX_ESTIMATED_CELLS,
     MAX_EUROSTAT_RESPONSE_BYTES,
     MAX_RECENT_MESSAGES,
+    MAX_RESULT_ROWS,
     MAX_SUMMARY_CHARACTERS,
     MAX_TIME_PERIODS,
+    MAX_TOOL_CALLS,
+    TOOL_CALL_LIMITS,
+    TOOLS,
 )
+from .local_agent import AgentConfig, AgentError, run_eurostat_agent
 
 
 ROOT = Path(__file__).resolve().parents[1]

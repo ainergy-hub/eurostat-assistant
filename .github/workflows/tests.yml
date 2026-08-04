@@ -20,9 +20,12 @@ jobs:
         with:
           node-version: "24"
       - run: uv sync --frozen
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: uv run python -m unittest discover -s tests -v
       - run: uv run python -m tests.prompt_regression replay
       - run: node --check static/app.js
       - run: node --check static/chat_store.js
       - run: node --check static/chart.js
-      - run: node --test tests/*.test.mjs
+      - run: npm run test:unit
+      - run: npm run test:smoke

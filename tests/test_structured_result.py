@@ -1430,7 +1430,7 @@ class StructuredResultTests(unittest.TestCase):
             ),
         )
 
-    @patch("app.sandbox_agent.run_helper")
+    @patch("app.agent_tools.run_helper")
     def test_fetch_tool_runs_dimension_preflight_before_observation_request(self, helper_mock) -> None:
         helper_mock.return_value = json.dumps(
             {
@@ -1450,7 +1450,7 @@ class StructuredResultTests(unittest.TestCase):
             }
         )
 
-        with patch.dict("app.sandbox_agent._TOOL_DIMENSION_CATALOGS", {}, clear=True):
+        with patch.dict("app.agent_tools._TOOL_DIMENSION_CATALOGS", {}, clear=True):
             output = call_tool(
                 "fetch_eurostat",
                 json.dumps({"dataset": "broad_dataset", "time": ["2025"]}),
@@ -1459,7 +1459,7 @@ class StructuredResultTests(unittest.TestCase):
         self.assertIn("too broad", output)
         self.assertEqual(helper_mock.call_count, 1)
 
-    @patch("app.sandbox_agent.run_helper")
+    @patch("app.agent_tools.run_helper")
     def test_search_tool_returns_enough_candidates_for_family_tables(self, helper_mock) -> None:
         helper_mock.return_value = "[]"
 

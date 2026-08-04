@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from .sandbox_agent import EVENT_PREFIX
+from .agent_config import EVENT_PREFIX
 
 
 DEFAULT_TIMEOUT_SECONDS = 180
