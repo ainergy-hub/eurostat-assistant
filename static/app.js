@@ -4,12 +4,13 @@ import {
   latestDataResult,
   latestUnansweredFailure,
   recentHistory,
+  shortChatTitle,
   titleFromPrompt,
-} from "./chat_state.js?v=20260816-1";
+} from "./chat_state.js?v=20260816-2";
 import {
   ChatHistoryStore,
   requestPersistentStorage,
-} from "./chat_store.js";
+} from "./chat_store.js?v=20260816-1";
 import {
   advancePendingStage,
   completeInFlightState,
@@ -25,8 +26,8 @@ import {
   bindDevelopmentSettings,
   loadDevelopmentSettings,
   selectedModelForRequest,
-} from "./development_view.js";
-import { streamChat } from "./chat_api.js";
+} from "./development_view.js?v=20260816-1";
+import { generateChatTitle, streamChat } from "./chat_api.js?v=20260816-1";
 import { readableToolName, renderToolCallDetails as renderToolTrace } from "./tool_trace.js";
 import {
   createProvenance,
@@ -144,6 +145,27 @@ function element(tag, className, text) {
   return node;
 }
 
+function renderChatTitle(node, record, { compact = false } = {}) {
+  node.classList.toggle("title-loading", Boolean(record?.titlePending));
+  if (!record?.titlePending) {
+    node.removeAttribute("aria-label");
+    node.textContent = compact ? shortChatTitle(record?.title) : record?.title || "New investigation";
+    return;
+  }
+  node.setAttribute("aria-label", "Generating chat title");
+  const loader = element("span", "title-loader");
+  loader.setAttribute("aria-hidden", "true");
+  loader.append(element("span"), element("span"), element("span"));
+  node.replaceChildren(
+    element("span", "sr-only", "Generating chat title"),
+    loader,
+  );
+}
+
+function recordTitleLabel(record) {
+  return record?.titlePending ? "current chat" : record?.title || "current chat";
+}
+
 
 function showDevelopmentPage({ updateHistory = true } = {}) {
   appLayout.classList.add("settings-view");
@@ -155,6 +177,8 @@ function showDevelopmentPage({ updateHistory = true } = {}) {
   developmentLink.classList.add("active");
   developmentLink.setAttribute("aria-current", "page");
   developmentLink.hidden = true;
+  currentChatTitle.classList.remove("title-loading");
+  currentChatTitle.removeAttribute("aria-label");
   currentChatTitle.textContent = "Development";
   contextStatus.hidden = true;
   downloadChatLogButton.hidden = true;
@@ -395,6 +419,34 @@ async function persistMessage(record, message) {
   }
 }
 
+async function applyGeneratedTitle(chatId, generatedTitle) {
+  const record = state.chats.find((item) => item.id === chatId);
+  if (!record || typeof generatedTitle !== "string" || !generatedTitle.trim()) return;
+  record.title = shortChatTitle(generatedTitle);
+  record.titlePending = false;
+  if (historyStore) {
+    try {
+      const metadata = await historyStore.updateChat(chatId, { title: record.title });
+      applyMetadata(record, metadata);
+    } catch {
+      // The next message persistence attempt can still save the in-memory title.
+    }
+  }
+  if (state.activeChatId === chatId && developmentPage.hidden) {
+    renderChatTitle(currentChatTitle, record);
+  }
+  renderChatList();
+}
+
+async function generateAndApplyChatTitle(chatId, message) {
+  try {
+    const data = await generateChatTitle(message, { onUnauthorized: showAppLock });
+    await applyGeneratedTitle(chatId, data.title);
+  } catch {
+    await applyGeneratedTitle(chatId, titleFromPrompt(message));
+  }
+}
+
 async function persistEvent(record, event) {
   if (!historyStore) return false;
   try {
@@ -447,7 +499,9 @@ function renderChatList() {
     select.type = "button";
     select.setAttribute("aria-current", record.id === state.activeChatId ? "page" : "false");
     const text = element("span", "chat-select-copy");
-    text.append(element("strong", "", record.title));
+    const title = element("strong");
+    renderChatTitle(title, record, { compact: true });
+    text.append(title);
     select.appendChild(text);
     select.addEventListener("click", () => {
       void selectChat(record.id);
@@ -455,7 +509,7 @@ function renderChatList() {
 
     const remove = element("button", "chat-delete", "×");
     remove.type = "button";
-    remove.setAttribute("aria-label", `Delete ${record.title}`);
+    remove.setAttribute("aria-label", `Delete ${recordTitleLabel(record)}`);
     remove.addEventListener("click", () => {
       void deleteChat(record.id);
     });
@@ -722,16 +776,16 @@ function renderWorkspace() {
   finalizeChartViews(chat);
   chat.replaceChildren();
   hero.hidden = record.messages.length > 0;
-  currentChatTitle.textContent = record.title;
+  renderChatTitle(currentChatTitle, record);
   downloadChatLogButton.disabled = record.messages.length === 0;
   downloadChatLogButton.setAttribute(
     "aria-label",
     record.messages.length
-      ? `Download log for ${record.title}`
+      ? `Download log for ${recordTitleLabel(record)}`
       : "Download log (available after the first message)",
   );
   downloadChatLogButton.title = record.messages.length
-    ? `Download log for ${record.title}`
+    ? `Download log for ${recordTitleLabel(record)}`
     : "Download log available after the first message";
   const summary = buildContextSummary(record.messages);
   contextStatus.hidden = !summary;
@@ -845,7 +899,8 @@ composer.addEventListener("submit", async (event) => {
   const summary = buildContextSummary(priorMessages);
   const history = recentHistory(priorMessages);
   const contextResult = latestDataResult(priorMessages);
-  if (!record.messages.length) record.title = titleFromPrompt(message);
+  const shouldGenerateTitle = record.messages.length === 0;
+  if (shouldGenerateTitle) record.titlePending = true;
   const requestStartedAt = new Date();
   const userMessage = {
     role: "user",
@@ -862,7 +917,7 @@ composer.addEventListener("submit", async (event) => {
   if (state.activeChatId === record.id) {
     hero.hidden = true;
     addQuestion(message);
-    currentChatTitle.textContent = record.title;
+    renderChatTitle(currentChatTitle, record);
     downloadChatLogButton.disabled = false;
     addPending(inFlightState.label);
   }
@@ -875,6 +930,9 @@ composer.addEventListener("submit", async (event) => {
   }, 2600);
   startToolActivity();
   const requestModel = selectedModelForRequest();
+  if (shouldGenerateTitle) {
+    void generateAndApplyChatTitle(record.id, message);
+  }
 
   try {
     const data = await streamChat(

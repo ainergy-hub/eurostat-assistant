@@ -242,6 +242,23 @@ export class ChatHistoryStore {
     return updated;
   }
 
+  async updateChat(chatId, patch = {}) {
+    const database = await this.open();
+    const transaction = database.transaction(CHATS_STORE, "readwrite");
+    const done = transactionComplete(transaction);
+    const chats = transaction.objectStore(CHATS_STORE);
+    const current = await requestResult(chats.get(chatId));
+    if (!current) {
+      transaction.abort();
+      await done.catch(() => {});
+      throw new Error("The investigation no longer exists.");
+    }
+    const updated = { ...current, ...patch, id: current.id };
+    chats.put(updated);
+    await done;
+    return updated;
+  }
+
   async appendEvent(chatId, event, patch = {}) {
     const database = await this.open();
     const transaction = database.transaction(

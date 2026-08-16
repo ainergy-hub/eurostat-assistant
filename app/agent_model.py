@@ -30,6 +30,7 @@ def openrouter_chat(
     model: str,
     messages: list[dict[str, Any]],
     available_tools: list[dict[str, Any]] | None = None,
+    timeout_seconds: float = 90,
 ) -> dict[str, Any]:
     selected_tools = TOOLS if available_tools is None else available_tools
     request_body: dict[str, Any] = {"model": model, "messages": messages}
@@ -48,7 +49,7 @@ def openrouter_chat(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=90) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")
@@ -116,4 +117,3 @@ verifies; do not expose hidden reasoning.
         )
     messages.append({"role": "user", "content": payload["query"]})
     return messages
-

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.main import _model_name, app
+from app.main import _model_name, _title_model_name, app
 
 
 class AppLockTests(unittest.TestCase):
@@ -74,6 +74,7 @@ class AppLockTests(unittest.TestCase):
         self.assertEqual(data["limits"]["eurostat_response_bytes"], 8_000_000)
         self.assertNotIn("agent_runtime", data["runtime"])
         self.assertEqual(data["runtime"]["history"], "This browser (IndexedDB)")
+        self.assertEqual(data["runtime"]["title_model"], "openai/gpt-5.4-nano")
 
     def test_default_model_is_the_first_configured_option(self) -> None:
         with patch.dict(
@@ -87,6 +88,49 @@ class AppLockTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "OPENROUTER_MODEL_OPTIONS"):
                 _model_name()
+
+    def test_title_model_has_a_separate_config(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"OPENROUTER_TITLE_MODEL": "test/fast-title-model"},
+            clear=True,
+        ):
+            self.assertEqual(_title_model_name(), "test/fast-title-model")
+
+    def test_invalid_title_model_is_rejected(self) -> None:
+        with patch.dict(os.environ, {"OPENROUTER_TITLE_MODEL": "not a model"}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "OPENROUTER_TITLE_MODEL"):
+                _title_model_name()
+
+    def test_title_api_requires_an_unlocked_session(self) -> None:
+        response = self.client.post("/api/chat/title", json={"message": "Population"})
+
+        self.assertEqual(response.status_code, 401)
+
+    @patch("app.main.generate_chat_title", return_value="European Population Trends")
+    def test_title_api_uses_the_dedicated_model(self, generate_title_mock) -> None:
+        self.client.post(
+            "/api/auth/unlock",
+            json={"password": "test-app-password"},
+        )
+
+        response = self.client.post(
+            "/api/chat/title",
+            json={"message": "How has European population changed?"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "title": "European Population Trends",
+                "model": "openai/gpt-5.4-nano",
+            },
+        )
+        generate_title_mock.assert_called_once_with(
+            "How has European population changed?",
+            "openai/gpt-5.4-nano",
+        )
 
     def test_unknown_model_is_rejected_before_starting_an_agent(self) -> None:
         self.client.post(

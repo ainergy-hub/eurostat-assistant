@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 
 import {
   CHAT_LOG_SCHEMA_VERSION,
+  CHAT_TITLE_MAX_LENGTH,
   SUMMARY_LIMIT,
   buildChatLog,
   buildContextSummary,
   latestDataResult,
   latestUnansweredFailure,
   recentHistory,
+  shortChatTitle,
   titleFromPrompt,
 } from "../static/chat_state.js";
 
@@ -69,8 +71,13 @@ assert.ok(summary.length <= SUMMARY_LIMIT);
 assert.equal(buildContextSummary(messages.slice(0, 6)), "");
 assert.equal(
   titleFromPrompt("Compare Germany and France population over the latest ten years please"),
-  "Compare Germany and France population ove…",
+  "Compare Germany and France population…",
 );
+assert.equal(titleFromPrompt("  Germany   annual inflation  "), "Germany annual inflation");
+assert.equal(shortChatTitle("Population, employment, wages, inflation, and productivity"), "Population, employment, wages…");
+assert.equal(shortChatTitle("x".repeat(80)), `${"x".repeat(39)}…`);
+assert.equal(shortChatTitle(""), "Untitled investigation");
+assert.ok(titleFromPrompt("Compare population and inflation across every EU member state").length <= CHAT_TITLE_MAX_LENGTH);
 
 const exportedAt = "2026-07-26T12:00:00.000Z";
 const log = buildChatLog(

@@ -43,3 +43,22 @@ export async function streamChat(payload, onEvent, { onUnauthorized } = {}) {
   if (!result) throw new Error("The agent stream ended before returning an answer.");
   return result;
 }
+
+export async function generateChatTitle(message, { onUnauthorized } = {}) {
+  const response = await fetch("/api/chat/title", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) {
+      onUnauthorized?.("Your app session expired. Enter the password again.");
+    }
+    throw new Error(data.detail || "The title model request failed.");
+  }
+  if (typeof data.title !== "string" || !data.title.trim()) {
+    throw new Error("The title model did not return a usable title.");
+  }
+  return data;
+}

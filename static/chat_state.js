@@ -1,10 +1,33 @@
 export const RECENT_MESSAGE_LIMIT = 6;
 export const SUMMARY_LIMIT = 2400;
 export const CHAT_LOG_SCHEMA_VERSION = 2;
+export const CHAT_TITLE_MAX_LENGTH = 40;
+export const CHAT_TITLE_MAX_WORDS = 6;
+
+export function shortChatTitle(value) {
+  const cleaned = String(value || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Untitled investigation";
+
+  const words = cleaned.split(" ");
+  const selected = [];
+  for (const word of words) {
+    if (selected.length >= CHAT_TITLE_MAX_WORDS) break;
+    const candidate = [...selected, word].join(" ");
+    if (candidate.length > CHAT_TITLE_MAX_LENGTH - 1) break;
+    selected.push(word);
+  }
+
+  if (!selected.length) {
+    return `${cleaned.slice(0, CHAT_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
+  }
+
+  const title = selected.join(" ");
+  const shortened = selected.length < words.length || title.length < cleaned.length;
+  return shortened ? `${title.replace(/[.,;:!?]+$/, "")}…` : title;
+}
 
 export function titleFromPrompt(prompt) {
-  const cleaned = prompt.replace(/\s+/g, " ").trim();
-  return cleaned.length > 42 ? `${cleaned.slice(0, 41).trimEnd()}…` : cleaned;
+  return shortChatTitle(prompt);
 }
 
 function compactText(value, length) {

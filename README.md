@@ -117,13 +117,16 @@ Add your credentials to `.env`:
 ```dotenv
 OPENROUTER_API_KEY=your_openrouter_api_key
 OPENROUTER_MODEL_OPTIONS=provider/default-model,provider/optional-model
+OPENROUTER_TITLE_MODEL=openai/gpt-5.4-nano
 APP_PASSWORD=choose-a-strong-password
 LOCAL_AGENT_CONCURRENCY=2
 ```
 
-`OPENROUTER_MODEL_OPTIONS` is the single source of truth for models. It is required, controls the
-models shown under **Development → Model**, and uses its first entry as the default. A browser's
-selection applies to new questions only and remains local to that browser.
+`OPENROUTER_MODEL_OPTIONS` is the source of truth for the main chat models. It is required,
+controls the models shown under **Development → Model**, and uses its first entry as the default. A
+browser's selection applies to new questions only and remains local to that browser.
+`OPENROUTER_TITLE_MODEL` controls the independent title workflow and defaults to
+`openai/gpt-5.4-nano`, a small model suited to fast background work.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
 Leave `APP_PASSWORD` unset only when the app is running in an already trusted environment.
@@ -152,6 +155,7 @@ promoting a deployment.
    ```dotenv
    OPENROUTER_API_KEY=your_openrouter_api_key
    OPENROUTER_MODEL_OPTIONS=provider/default-model,provider/optional-model
+   OPENROUTER_TITLE_MODEL=openai/gpt-5.4-nano
    APP_PASSWORD=choose-a-strong-password
    LOCAL_AGENT_CONCURRENCY=2
    ```
@@ -184,6 +188,9 @@ the jsDelivr CDN; the model never supplies arbitrary Vega-Lite specifications.
 Complete display history stays on the device in the browser's IndexedDB storage. Investigation
 metadata, messages, and diagnostic events are stored separately, so the app loads the lightweight
 history list plus the active investigation instead of rewriting or loading every saved response.
+When the first question is sent, the browser starts a separate title request in parallel with the
+main agent. The title workflow uses `OPENROUTER_TITLE_MODEL` and updates the history list as soon as
+it completes. If it is unavailable, the browser keeps a shortened first-prompt fallback.
 Existing `eurostat-lens-chats-v1` local-storage history is migrated automatically on first launch.
 History remains specific to the current browser profile and site origin; clearing site data removes
 it, and the browser's normal storage quota still applies. The agent receives the six most recent

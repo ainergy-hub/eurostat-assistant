@@ -76,3 +76,56 @@ test("settings opens as a minimal full-page overlay and closes from its top bar"
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Explore Eurostat data." })).toBeVisible();
 });
+
+test("shows a subtle title loader before the parallel AI title completes", async ({ page }) => {
+  let releaseTitle;
+  const titleGate = new Promise((resolve) => {
+    releaseTitle = resolve;
+  });
+  await page.route("**/api/chat/title", async (route) => {
+    await titleGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        title: "German Population Trends",
+        model: "openai/gpt-5.4-nano",
+      }),
+    });
+  });
+  await page.route("**/api/chat/stream", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: `${JSON.stringify({
+        type: "result",
+        data: {
+          answer: "Population increased.",
+          model: "test/model",
+          result: null,
+          tool_calls: 0,
+          tool_call_details: [],
+        },
+      })}\n`,
+    }),
+  );
+  await page.goto("/");
+
+  await page.getByRole("textbox", { name: "Investigation query" }).fill(
+    "How has Germany's population changed?",
+  );
+  await page.getByRole("button", { name: /Ask/ }).click();
+
+  await expect(page.locator("#current-chat-title.title-loading")).toHaveAttribute(
+    "aria-label",
+    "Generating chat title",
+  );
+  await expect(page.locator(".chat-select-copy .title-loader")).toBeVisible();
+  await expect(page.locator(".chat-select-copy .title-loader > span")).toHaveCount(3);
+  await expect(page.getByText("How has Germany's population changed?", { exact: true })).toHaveCount(1);
+
+  releaseTitle();
+  await expect(page.locator("#current-chat-title")).toHaveText("German Population Trends");
+  await expect(page.locator(".chat-select-copy strong")).toHaveText("German Population Trends");
+  await expect(page.locator(".title-loading")).toHaveCount(0);
+});

@@ -68,6 +68,7 @@ function renderDevelopmentSettings(settings) {
 
   const runtimeLabels = {
     model_gateway: "Model gateway",
+    title_model: "Chat title model",
     data_source: "Data source",
     history: "Chat history",
   };

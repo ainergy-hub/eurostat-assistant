@@ -29,6 +29,7 @@ from .agent_config import (
     TOOLS,
 )
 from .local_agent import AgentConfig, AgentError, run_eurostat_agent
+from .title_agent import DEFAULT_TITLE_MODEL, TitleAgentError, generate_chat_title
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +118,13 @@ def _model_label(model: str) -> str:
         replacements.get(part.lower(), part.capitalize())
         for part in model_name.replace("_", "-").split("-")
     )
+
+
+def _title_model_name() -> str:
+    selected = os.getenv("OPENROUTER_TITLE_MODEL", DEFAULT_TITLE_MODEL).strip()
+    if not selected or not MODEL_ID_PATTERN.fullmatch(selected):
+        raise RuntimeError("OPENROUTER_TITLE_MODEL contains an invalid model ID.")
+    return selected
 
 
 def _resolve_request_model(model: str | None) -> str:
@@ -210,6 +218,15 @@ class ChatRequest(BaseModel):
     summary: str = Field(default="", max_length=MAX_SUMMARY_CHARACTERS)
     context_result: DataResult | None = None
     model: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class ChatTitleRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+class ChatTitleResponse(BaseModel):
+    title: str = Field(min_length=1, max_length=40)
+    model: str
 
 
 class UnlockRequest(BaseModel):
@@ -334,6 +351,7 @@ def development_settings() -> dict[str, Any]:
         },
         "runtime": {
             "model_gateway": "OpenRouter",
+            "title_model": _title_model_name(),
             "data_source": "Eurostat public APIs",
             "history": "This browser (IndexedDB)",
         },
@@ -373,6 +391,16 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return _public_response(result, agent_config.model)
+
+
+@app.post("/api/chat/title", response_model=ChatTitleResponse)
+async def chat_title(request: ChatTitleRequest) -> ChatTitleResponse:
+    model = _title_model_name()
+    try:
+        title = await anyio.to_thread.run_sync(generate_chat_title, request.message, model)
+    except TitleAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ChatTitleResponse(title=title, model=model)
 
 
 @app.post("/api/chat/stream")
