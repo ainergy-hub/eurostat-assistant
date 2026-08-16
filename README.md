@@ -207,10 +207,10 @@ with its helper processes when the request times out. Do not add arbitrary shell
 code execution without introducing a stronger isolation boundary.
 
 Use **Download log** in the current investigation header to export a local JSON diagnostic log.
-The export contains the chat, dataset and filter metadata, tool-call status, timing for new
-responses, compacted context, and recorded request errors. Observation rows and tool result
-previews are excluded. Review the file before sharing because the chat text may still contain
-reported values.
+The export contains the chat, model used for each response, dataset and filter metadata,
+tool-call status, timing for new responses, compacted context, and recorded request errors.
+Observation rows and tool result previews are excluded. Review the file before sharing because
+the chat text may still contain reported values.
 
 Use **Development** in the sidebar (or open `/settings/development`) to select an enabled model and
 inspect the request lifecycle, tool descriptions and limits, runtime services, privacy behavior,
@@ -233,6 +233,7 @@ A successful chat result follows this public contract:
 ```json
 {
   "answer": "The population increased...",
+  "model": "openai/gpt-5.6-luna-pro",
   "result": {
     "dataset": {
       "code": "demo_pjan",

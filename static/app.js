@@ -5,7 +5,7 @@ import {
   latestUnansweredFailure,
   recentHistory,
   titleFromPrompt,
-} from "./chat_state.js?v=20260801-1";
+} from "./chat_state.js?v=20260816-1";
 import {
   ChatHistoryStore,
   requestPersistentStorage,
@@ -874,16 +874,16 @@ composer.addEventListener("submit", async (event) => {
     syncPendingLabel();
   }, 2600);
   startToolActivity();
+  const requestModel = selectedModelForRequest();
 
   try {
-    const selectedModel = selectedModelForRequest();
     const data = await streamChat(
       {
         message,
         history,
         summary,
         context_result: contextResult,
-        ...(selectedModel ? { model: selectedModel } : {}),
+        ...(requestModel ? { model: requestModel } : {}),
       },
       (streamEvent) => {
         if (streamEvent.type !== "tool_call" || !streamEvent.call) return;
@@ -915,6 +915,7 @@ composer.addEventListener("submit", async (event) => {
         role: "assistant",
         content: data.answer,
         createdAt: new Date().toISOString(),
+        ...(data.model || requestModel ? { model: data.model || requestModel } : {}),
         durationMs: Date.now() - requestStartedAt.getTime(),
         result: data.result,
         toolCalls: data.tool_calls,
@@ -943,6 +944,7 @@ composer.addEventListener("submit", async (event) => {
         createdAt: new Date().toISOString(),
         durationMs: Date.now() - requestStartedAt.getTime(),
         message: error instanceof Error ? error.message : String(error),
+        ...(requestModel ? { model: requestModel } : {}),
       };
       target.events.push(diagnosticEvent);
       target.updatedAt = new Date().toISOString();

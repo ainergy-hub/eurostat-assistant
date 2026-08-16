@@ -1,6 +1,6 @@
 export const RECENT_MESSAGE_LIMIT = 6;
 export const SUMMARY_LIMIT = 2400;
-export const CHAT_LOG_SCHEMA_VERSION = 1;
+export const CHAT_LOG_SCHEMA_VERSION = 2;
 
 export function titleFromPrompt(prompt) {
   const cleaned = prompt.replace(/\s+/g, " ").trim();
@@ -137,6 +137,7 @@ export function buildChatLog(
         role: message.role,
         createdAt: message.createdAt || null,
         content: message.content,
+        ...(message.model === undefined ? {} : { model: message.model }),
         ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),
         ...(message.toolCalls === undefined ? {} : { toolCalls: message.toolCalls }),
         ...(message.toolCallDetails === undefined

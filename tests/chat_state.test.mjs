@@ -84,6 +84,7 @@ const log = buildChatLog(
       {
         role: "assistant",
         content: "Population changed.",
+        model: "openai/gpt-5.6-luna-pro",
         durationMs: 1250,
         toolCalls: 1,
         toolCallDetails: [
@@ -111,7 +112,13 @@ const log = buildChatLog(
         },
       },
     ],
-    events: [{ type: "request_error", message: "Example failure" }],
+    events: [
+      {
+        type: "request_error",
+        message: "Example failure",
+        model: "openai/gpt-5.6-luna-pro",
+      },
+    ],
   },
   { exportedAt, appVersion: "0.2.0" },
 );
@@ -120,6 +127,7 @@ assert.equal(log.exportedAt, exportedAt);
 assert.equal(log.app.version, "0.2.0");
 assert.equal(log.investigation.turnCount, 1);
 assert.equal(log.investigation.messageCount, 2);
+assert.equal(log.investigation.messages[1].model, "openai/gpt-5.6-luna-pro");
 assert.equal(log.investigation.messages[1].toolCallDetails[0].name, "fetch_data");
 assert.equal(
   log.investigation.messages[1].toolCallDetails[0].reason,
@@ -132,5 +140,6 @@ assert.equal(log.investigation.messages[1].result.dataset.code, "demo_pjan");
 assert.equal(log.investigation.messages[1].result.source_tables[0].rowCount, 1);
 assert.equal("rows" in log.investigation.messages[1].result.source_tables[0], false);
 assert.equal(log.investigation.events[0].type, "request_error");
+assert.equal(log.investigation.events[0].model, "openai/gpt-5.6-luna-pro");
 
 console.log("chat state tests passed");

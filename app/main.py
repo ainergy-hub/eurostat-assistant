@@ -229,6 +229,7 @@ class ToolCallDetail(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+    model: str | None = None
     result: DataResult | None = None
     tool_calls: int = Field(default=0, ge=0)
     tool_call_details: list[ToolCallDetail] = Field(default_factory=list)
@@ -346,9 +347,10 @@ def _agent_config(model: str | None = None) -> AgentConfig:
     )
 
 
-def _public_response(result: Any) -> ChatResponse:
+def _public_response(result: Any, model: str | None = None) -> ChatResponse:
     return ChatResponse(
         answer=result.answer,
+        model=model,
         result=result.result,
         tool_calls=result.tool_calls,
         tool_call_details=result.tool_call_details,
@@ -357,19 +359,20 @@ def _public_response(result: Any) -> ChatResponse:
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
+    agent_config = _agent_config(request.model)
     try:
         result = await anyio.to_thread.run_sync(
             run_eurostat_agent,
             request.message,
             [message.model_dump() for message in request.history],
             request.summary,
-            _agent_config(request.model),
+            agent_config,
             request.context_result.model_dump(mode="json") if request.context_result else None,
         )
     except AgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return _public_response(result)
+    return _public_response(result, agent_config.model)
 
 
 @app.post("/api/chat/stream")
@@ -390,7 +393,12 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 request.context_result.model_dump(mode="json") if request.context_result else None,
                 on_event=publish,
             )
-            publish({"type": "result", "data": _public_response(result).model_dump(mode="json")})
+            publish(
+                {
+                    "type": "result",
+                    "data": _public_response(result, agent_config.model).model_dump(mode="json"),
+                }
+            )
         except AgentError as exc:
             publish({"type": "error", "message": str(exc)})
         except Exception:
