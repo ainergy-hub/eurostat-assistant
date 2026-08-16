@@ -333,7 +333,7 @@ a {
 
 .app-layout {
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -581,10 +581,9 @@ th {
 }
 
 .chat-list-item {
+  position: relative;
   min-height: 52px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px;
-  align-items: stretch;
+  display: block;
   border: 1px solid transparent;
 }
 
@@ -618,40 +617,45 @@ th {
 
 .chat-select-copy {
   min-width: 0;
-  display: grid;
-  gap: 2px;
+  display: block;
 }
 
 .chat-select-copy strong {
+  display: block;
   overflow: hidden;
   font-size: 0.74rem;
   font-weight: 700;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.chat-select-copy small {
-  color: var(--color-text-muted);
-  font-size: 0.61rem;
-}
-
 .chat-delete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: 44px;
   height: auto;
   display: grid;
   place-items: center;
+  background: var(--color-panel);
   color: transparent;
   font-size: 1.15rem;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .chat-list-item:hover .chat-delete,
 .chat-list-item:focus-within .chat-delete {
   color: var(--color-text-muted);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .chat-delete:hover,
 .chat-delete:focus-visible {
-  background: transparent;
+  background: var(--color-panel);
   color: var(--color-error) !important;
 }
 
@@ -2478,7 +2482,7 @@ footer a:hover {
   .sidebar {
     position: fixed;
     left: 0;
-    width: min(310px, calc(100vw - 44px));
+    width: min(340px, calc(100vw - 44px));
     box-shadow: 8px 0 0 color-mix(in srgb, var(--color-text-primary) 16%, transparent);
     transform: translateX(-102%);
     transition: transform 180ms ease;

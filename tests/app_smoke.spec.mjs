@@ -30,6 +30,19 @@ test("the assembled application starts without browser errors", async ({ page })
   await expect(
     page.getByRole("textbox", { name: "Investigation query" }),
   ).toBeVisible();
+  const sidebarBox = await page
+    .getByRole("complementary", { name: "Investigations" })
+    .boundingBox();
+  expect(sidebarBox).not.toBeNull();
+  expect(sidebarBox.width).toBe(320);
+  const historyTitleLayout = await page.locator(".chat-select-copy strong").evaluate((title) => ({
+    whiteSpace: getComputedStyle(title).whiteSpace,
+    width: title.getBoundingClientRect().width,
+  }));
+  expect(historyTitleLayout.whiteSpace).toBe("nowrap");
+  expect(historyTitleLayout.width).toBeGreaterThan(250);
+  expect(await page.locator(".chat-select").getAttribute("title")).toBeNull();
+  await expect(page.locator(".chat-select-copy small")).toHaveCount(0);
   await expect(page.getByText("Agent ready", { exact: true })).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });

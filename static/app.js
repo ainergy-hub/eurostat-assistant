@@ -413,15 +413,6 @@ function activeChat() {
   return state.chats.find((item) => item.id === state.activeChatId);
 }
 
-function formatChatDate(value) {
-  const date = new Date(value);
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
 function openSidebar() {
   document.body.classList.add("sidebar-open");
 }
@@ -456,17 +447,7 @@ function renderChatList() {
     select.type = "button";
     select.setAttribute("aria-current", record.id === state.activeChatId ? "page" : "false");
     const text = element("span", "chat-select-copy");
-    const turnCount = Number.isInteger(record.turnCount)
-      ? record.turnCount
-      : record.messages.filter((message) => message.role === "user").length;
-    text.append(
-      element("strong", "", record.title),
-      element(
-        "small",
-        "",
-        `${turnCount} turn${turnCount === 1 ? "" : "s"} · ${formatChatDate(record.updatedAt)}`,
-      ),
-    );
+    text.append(element("strong", "", record.title));
     select.appendChild(text);
     select.addEventListener("click", () => {
       void selectChat(record.id);
