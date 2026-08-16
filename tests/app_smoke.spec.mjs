@@ -41,6 +41,12 @@ test("the assembled application starts without browser errors", async ({ page })
   }));
   expect(historyTitleLayout.whiteSpace).toBe("nowrap");
   expect(historyTitleLayout.width).toBeGreaterThan(250);
+  const historyRowLayout = await page.locator(".chat-list-item").evaluate((row) => ({
+    height: row.getBoundingClientRect().height,
+    gap: getComputedStyle(row.parentElement).rowGap,
+  }));
+  expect(historyRowLayout.height).toBe(40);
+  expect(historyRowLayout.gap).toBe("2px");
   expect(await page.locator(".chat-select").getAttribute("title")).toBeNull();
   await expect(page.locator(".chat-select-copy small")).toHaveCount(0);
   await expect(page.getByText("Agent ready", { exact: true })).toHaveCount(0);
