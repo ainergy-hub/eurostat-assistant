@@ -33,6 +33,7 @@ class AgentConfig:
 @dataclass(frozen=True)
 class AgentResult:
     answer: str
+    confidence: str
     result: dict[str, Any] | None
     tool_calls: int
     tool_call_details: list[dict[str, Any]]
@@ -270,6 +271,10 @@ def run_eurostat_agent(
     if not answer:
         raise AgentError("Local agent did not return an answer.")
 
+    confidence = str(data.get("confidence", "medium")).strip().lower()
+    if confidence not in {"low", "medium", "high"}:
+        raise AgentError("Local agent returned an invalid confidence level.")
+
     structured_result = data.get("result")
     if structured_result is not None and not isinstance(structured_result, dict):
         raise AgentError("Local agent returned an invalid structured result.")
@@ -284,6 +289,7 @@ def run_eurostat_agent(
 
     return AgentResult(
         answer=answer,
+        confidence=confidence,
         result=structured_result,
         tool_calls=tool_calls,
         tool_call_details=tool_call_details,

@@ -246,6 +246,7 @@ class ToolCallDetail(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
+    confidence: Literal["low", "medium", "high"] = "medium"
     model: str | None = None
     result: DataResult | None = None
     tool_calls: int = Field(default=0, ge=0)
@@ -368,6 +369,7 @@ def _agent_config(model: str | None = None) -> AgentConfig:
 def _public_response(result: Any, model: str | None = None) -> ChatResponse:
     return ChatResponse(
         answer=result.answer,
+        confidence=result.confidence,
         model=model,
         result=result.result,
         tool_calls=result.tool_calls,

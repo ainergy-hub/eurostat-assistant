@@ -773,6 +773,7 @@ th {
 }
 
 .theme-toggle-button,
+.info-button,
 .development-button,
 .download-log-button,
 .lock-app-button,
@@ -805,6 +806,7 @@ th {
 }
 
 .theme-toggle-button:hover,
+.info-button:hover,
 .development-button:hover,
 .download-log-button:hover,
 .lock-app-button:hover,
@@ -813,9 +815,14 @@ th {
 }
 
 .theme-toggle-button,
+.info-button,
 .development-button,
 .lock-app-button {
   background: transparent;
+}
+
+.info-button {
+  color: var(--color-text-muted);
 }
 
 .development-button {
@@ -1651,12 +1658,34 @@ tbody tr:last-child td {
 
 .response-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   border-top: var(--border-hairline);
   padding: var(--space-3) var(--space-5);
 }
 
+.confidence-level {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.confidence-high {
+  color: var(--color-good);
+}
+
+.confidence-medium {
+  color: var(--color-warning);
+}
+
+.confidence-low {
+  color: var(--color-error);
+}
+
 .retry-button {
+  margin-left: auto;
   min-height: 36px;
   display: inline-flex;
   align-items: center;
@@ -2318,6 +2347,72 @@ footer a:hover {
   padding: var(--space-3) var(--space-5);
   color: var(--color-text-muted);
   font-size: 0.68rem;
+}
+
+.about-dialog {
+  width: min(560px, calc(100% - 32px));
+}
+
+.about-dialog-body {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+.about-dialog-intro {
+  margin: 0;
+  font-family: var(--font-text);
+  font-size: clamp(1.15rem, 3vw, 1.45rem);
+  line-height: 1.5;
+}
+
+.about-facts {
+  display: grid;
+  margin: 0;
+  border-top: var(--border-hairline);
+}
+
+.about-facts > div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: var(--space-4);
+  border-bottom: var(--border-hairline);
+  padding: var(--space-3) 0;
+}
+
+.about-facts dt {
+  color: var(--color-text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.about-facts dd {
+  margin: 0;
+}
+
+.about-caveat {
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-soft);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.about-source-link {
+  width: max-content;
+  color: var(--color-accent-dim);
+  font-weight: 800;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.about-source-link:hover,
+.about-source-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .tool-call-details {

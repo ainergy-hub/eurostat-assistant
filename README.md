@@ -240,6 +240,7 @@ A successful chat result follows this public contract:
 ```json
 {
   "answer": "The population increased...",
+  "confidence": "high",
   "model": "openai/gpt-5.6-luna-pro",
   "result": {
     "dataset": {

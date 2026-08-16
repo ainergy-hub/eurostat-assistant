@@ -81,6 +81,12 @@ when the user asks only for the overall relationship, the final answer must not 
 country or geography by name. Do not restate dataset update timestamps; the structured result
 already exposes them without risking transcription errors.
 Give the interpretation, provenance, filters, assumptions, and important caveats in concise prose.
+End every final answer with exactly one machine-readable confidence tag on its own line:
+`<confidence>high</confidence>`, `<confidence>medium</confidence>`, or
+`<confidence>low</confidence>`. The host removes this tag before showing the answer. Use high when
+the selected Eurostat data directly and completely supports the answer; medium when the answer
+depends on a reasonable assumption, proxy, estimate, incomplete coverage, or limited comparison;
+and low when important ambiguity, missing data, incompatible coverage, or tool failure remains.
 For every tool call, set `reason` to one brief user-facing sentence describing what it retrieves or
 verifies; do not expose hidden reasoning.
 """.strip()

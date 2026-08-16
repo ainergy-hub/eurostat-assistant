@@ -77,6 +77,23 @@ test("settings opens as a minimal full-page overlay and closes from its top bar"
   await expect(page.getByRole("heading", { name: "Explore Eurostat data." })).toBeVisible();
 });
 
+test("the top info button opens accessible app information", async ({ page }) => {
+  await page.goto("/");
+
+  const infoButton = page.getByRole("button", { name: "About this app" });
+  await expect(infoButton).toBeVisible();
+  await infoButton.click();
+
+  const aboutDialog = page.getByRole("dialog", { name: "About this app" });
+  await expect(aboutDialog).toBeVisible();
+  await expect(aboutDialog.getByText("Official Eurostat dissemination datasets")).toBeVisible();
+  await expect(aboutDialog.getByText("0.3.0", { exact: true })).toBeVisible();
+
+  await aboutDialog.getByRole("button", { name: "Close app information" }).click();
+  await expect(aboutDialog).not.toBeVisible();
+  await expect(infoButton).toBeFocused();
+});
+
 test("shows a subtle title loader before the parallel AI title completes", async ({ page }) => {
   let releaseTitle;
   const titleGate = new Promise((resolve) => {
@@ -101,6 +118,7 @@ test("shows a subtle title loader before the parallel AI title completes", async
         type: "result",
         data: {
           answer: "Population increased.",
+          confidence: "high",
           model: "test/model",
           result: null,
           tool_calls: 0,
@@ -122,6 +140,21 @@ test("shows a subtle title loader before the parallel AI title completes", async
   );
   await expect(page.locator(".chat-select-copy .title-loader")).toBeVisible();
   await expect(page.locator(".chat-select-copy .title-loader > span")).toHaveCount(3);
+  const confidence = page.getByLabel("Answer confidence: high");
+  const retry = page.getByRole("button", { name: "Retry this question" });
+  await expect(confidence).toHaveText("Confidence: High");
+  await expect(retry).toBeVisible();
+  const confidenceBox = await confidence.boundingBox();
+  const retryBox = await retry.boundingBox();
+  expect(confidenceBox).not.toBeNull();
+  expect(retryBox).not.toBeNull();
+  expect(confidenceBox.x).toBeLessThan(retryBox.x);
+  const confidenceStyle = await confidence.evaluate((node) => ({
+    backgroundColor: getComputedStyle(node).backgroundColor,
+    borderStyle: getComputedStyle(node).borderStyle,
+  }));
+  expect(confidenceStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  expect(confidenceStyle.borderStyle).toBe("none");
   await expect(page.getByText("How has Germany's population changed?", { exact: true })).toHaveCount(1);
 
   releaseTitle();

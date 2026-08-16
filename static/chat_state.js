@@ -161,6 +161,7 @@ export function buildChatLog(
         createdAt: message.createdAt || null,
         content: message.content,
         ...(message.model === undefined ? {} : { model: message.model }),
+        ...(message.confidence === undefined ? {} : { confidence: message.confidence }),
         ...(message.durationMs === undefined ? {} : { durationMs: message.durationMs }),
         ...(message.toolCalls === undefined ? {} : { toolCalls: message.toolCalls }),
         ...(message.toolCallDetails === undefined

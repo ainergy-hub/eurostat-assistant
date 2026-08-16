@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -90,6 +91,20 @@ except ImportError:  # Support direct execution by local_agent.py.
     from agent_model import build_messages, openrouter_chat
 
 
+CONFIDENCE_PATTERN = re.compile(
+    r"\s*<confidence>\s*(low|medium|high)\s*</confidence>\s*$",
+    flags=re.IGNORECASE,
+)
+
+
+def answer_with_confidence(content: Any) -> tuple[str, str]:
+    answer = text_content(content).strip()
+    match = CONFIDENCE_PATTERN.search(answer)
+    if not match:
+        return answer, "medium"
+    return answer[: match.start()].rstrip(), match.group(1).lower()
+
+
 def run(
     payload: dict[str, Any],
     chat_client: Any = None,
@@ -130,14 +145,16 @@ def run(
                         "I could not safely interpret the model's tool request. "
                         "Please try the request again."
                     ),
+                    "confidence": "low",
                     "result": None,
                     "tool_calls": tool_call_count,
                     "tool_call_details": tool_call_details,
                 }
         if not tool_calls:
-            answer = text_content(message.get("content")).strip()
+            answer, confidence = answer_with_confidence(message.get("content"))
             return {
                 "answer": answer or "I could not complete the Eurostat request.",
+                "confidence": confidence,
                 "result": response_result(
                     last_fetch,
                     context_result,
@@ -391,6 +408,7 @@ def run(
             f"I could not complete the Eurostat lookup within {MAX_TOOL_ROUNDS} "
             "model/tool rounds. Please narrow the question."
         ),
+        "confidence": "low",
         "result": response_result(
             last_fetch,
             context_result,

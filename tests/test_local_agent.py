@@ -26,6 +26,7 @@ class LocalAgentTests(unittest.TestCase):
                     print({EVENT_PREFIX!r} + json.dumps({{"type": "tool_call", "query": request["query"]}}))
                     print(json.dumps({{
                         "answer": "Ready.",
+                        "confidence": "high",
                         "result": None,
                         "tool_calls": 0,
                         "tool_call_details": [],
@@ -45,6 +46,7 @@ class LocalAgentTests(unittest.TestCase):
             )
 
         self.assertEqual(result.answer, "Ready.")
+        self.assertEqual(result.confidence, "high")
         self.assertEqual(events, [{"type": "tool_call", "query": "Test the runner."}])
 
     @patch.dict(

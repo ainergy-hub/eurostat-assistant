@@ -10,7 +10,7 @@
     <title>Eurostat Assistant — Ask official European data</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260816-7" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260817-3" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -98,6 +98,19 @@
             </div>
           </div>
           <div class="topbar-meta">
+            <button
+              class="info-button"
+              id="info-button"
+              type="button"
+              title="About this app"
+              aria-label="About this app"
+            >
+              <span class="utility-label">About this app</span>
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M12 11v6M12 7.25v.5"></path>
+              </svg>
+            </button>
             <button
               class="development-button"
               id="development-link"
@@ -373,6 +386,44 @@
       </main>
     </div>
 
+    <dialog class="tool-call-dialog about-dialog" id="about-dialog" aria-labelledby="about-dialog-title">
+      <div class="tool-call-dialog-header">
+        <div>
+          <span class="thread-label">Eurostat Assistant</span>
+          <h2 id="about-dialog-title">About this app</h2>
+        </div>
+        <button class="dialog-close" id="about-dialog-close" type="button" aria-label="Close app information">
+          ×
+        </button>
+      </div>
+      <div class="about-dialog-body">
+        <p class="about-dialog-intro">
+          Ask questions in plain language and get sourced answers, charts, and tables from
+          official European statistics.
+        </p>
+        <dl class="about-facts">
+          <div>
+            <dt>Data</dt>
+            <dd>Official Eurostat dissemination datasets</dd>
+          </div>
+          <div>
+            <dt>History</dt>
+            <dd>Saved locally in this browser</dd>
+          </div>
+          <div>
+            <dt>Version</dt>
+            <dd id="about-app-version">—</dd>
+          </div>
+        </dl>
+        <p class="about-caveat">
+          AI can make mistakes. Check the linked dataset and methodology before relying on a result.
+        </p>
+        <a class="about-source-link" href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
+          Visit Eurostat <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </dialog>
+
     <div
       class="notification"
       id="notification"
@@ -446,6 +497,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260816-9" type="module"></script>
+    <script src="/static/app.js?v=20260817-2" type="module"></script>
   </body>
 </html>

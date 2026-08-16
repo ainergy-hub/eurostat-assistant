@@ -76,6 +76,10 @@ const notification = document.querySelector("#notification");
 const notificationMessage = document.querySelector("#notification-message");
 const notificationDismiss = document.querySelector("#notification-dismiss");
 const developmentLink = document.querySelector("#development-link");
+const infoButton = document.querySelector("#info-button");
+const aboutDialog = document.querySelector("#about-dialog");
+const aboutDialogClose = document.querySelector("#about-dialog-close");
+const aboutAppVersion = document.querySelector("#about-app-version");
 const developmentPage = document.querySelector("#development-page");
 const settingsCloseButton = document.querySelector("#settings-close");
 const chatViews = document.querySelectorAll("[data-chat-view]");
@@ -693,18 +697,35 @@ function retryPrompt(message, priorMessages = []) {
   composer.requestSubmit();
 }
 
-function appendRetryAction(response, prompt, priorMessages = []) {
-  if (!String(prompt || "").trim()) return;
+function appendResponseActions(response, prompt, priorMessages = [], confidence = "") {
+  const normalizedConfidence = ["low", "medium", "high"].includes(
+    String(confidence || "").toLowerCase(),
+  )
+    ? String(confidence).toLowerCase()
+    : "";
+  const canRetry = Boolean(String(prompt || "").trim());
+  if (!canRetry && !normalizedConfidence) return;
   const actions = element("div", "response-actions");
-  const retryButton = element("button", "retry-button");
-  retryButton.type = "button";
-  retryButton.setAttribute("aria-label", "Retry this question");
-  retryButton.append(
-    element("span", "retry-icon", "↻"),
-    element("span", "", "Retry"),
-  );
-  retryButton.addEventListener("click", () => retryPrompt(prompt, priorMessages));
-  actions.appendChild(retryButton);
+  if (normalizedConfidence) {
+    const label = element(
+      "span",
+      `confidence-level confidence-${normalizedConfidence}`,
+      `Confidence: ${normalizedConfidence[0].toUpperCase()}${normalizedConfidence.slice(1)}`,
+    );
+    label.setAttribute("aria-label", `Answer confidence: ${normalizedConfidence}`);
+    actions.appendChild(label);
+  }
+  if (canRetry) {
+    const retryButton = element("button", "retry-button");
+    retryButton.type = "button";
+    retryButton.setAttribute("aria-label", "Retry this question");
+    retryButton.append(
+      element("span", "retry-icon", "↻"),
+      element("span", "", "Retry"),
+    );
+    retryButton.addEventListener("click", () => retryPrompt(prompt, priorMessages));
+    actions.appendChild(retryButton);
+  }
   response.appendChild(actions);
 }
 
@@ -720,7 +741,7 @@ function addError(message, prompt, priorMessages = [], shouldScroll = true) {
     ),
   );
   response.appendChild(answer);
-  appendRetryAction(response, prompt, priorMessages);
+  appendResponseActions(response, prompt, priorMessages);
   chat.appendChild(response);
   if (shouldScroll) response.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -733,6 +754,7 @@ function addResponse(
   details = [],
   retryMessage = "",
   retryContext = [],
+  confidence = "",
   shouldScroll = true,
 ) {
   const response = element("article", "response");
@@ -765,7 +787,7 @@ function addResponse(
     }
     response.appendChild(createProvenance(result));
   }
-  appendRetryAction(response, retryMessage, retryContext);
+  appendResponseActions(response, retryMessage, retryContext, confidence);
   chat.appendChild(response);
   if (shouldScroll) response.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -808,6 +830,7 @@ function renderWorkspace() {
         message.toolCallDetails || [],
         latestQuestion,
         latestQuestionContext,
+        message.confidence,
         false,
       );
     }
@@ -972,6 +995,7 @@ composer.addEventListener("submit", async (event) => {
       const assistantMessage = {
         role: "assistant",
         content: data.answer,
+        confidence: data.confidence,
         createdAt: new Date().toISOString(),
         ...(data.model || requestModel ? { model: data.model || requestModel } : {}),
         durationMs: Date.now() - requestStartedAt.getTime(),
@@ -1072,6 +1096,11 @@ apiQueryPanel.addEventListener("click", (event) => {
   if (outsidePanel) apiQueryPanel.close();
 });
 developmentLink.addEventListener("click", () => showDevelopmentPage());
+infoButton.addEventListener("click", () => aboutDialog.showModal());
+aboutDialogClose.addEventListener("click", () => aboutDialog.close());
+aboutDialog.addEventListener("click", (event) => {
+  if (event.target === aboutDialog) aboutDialog.close();
+});
 settingsCloseButton.addEventListener("click", () => {
   showChatPage();
   developmentLink.focus();
@@ -1090,6 +1119,7 @@ window.addEventListener("storage", (event) => {
 });
 
 async function initializeApp() {
+  aboutAppVersion.textContent = APP_VERSION;
   bindDevelopmentSettings();
   syncThemeToggle();
   await initializeHistory();

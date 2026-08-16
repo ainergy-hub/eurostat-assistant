@@ -91,6 +91,7 @@ const log = buildChatLog(
       {
         role: "assistant",
         content: "Population changed.",
+        confidence: "high",
         model: "openai/gpt-5.6-luna-pro",
         durationMs: 1250,
         toolCalls: 1,
@@ -135,6 +136,7 @@ assert.equal(log.app.version, "0.2.0");
 assert.equal(log.investigation.turnCount, 1);
 assert.equal(log.investigation.messageCount, 2);
 assert.equal(log.investigation.messages[1].model, "openai/gpt-5.6-luna-pro");
+assert.equal(log.investigation.messages[1].confidence, "high");
 assert.equal(log.investigation.messages[1].toolCallDetails[0].name, "fetch_data");
 assert.equal(
   log.investigation.messages[1].toolCallDetails[0].reason,

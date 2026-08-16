@@ -17,6 +17,7 @@ from app.sandbox_agent import (
     MAX_TOOL_ROUNDS,
     TOOLS,
     build_messages,
+    answer_with_confidence,
     build_scatter_result,
     build_source_tables,
     build_structured_result,
@@ -137,6 +138,17 @@ class StructuredResultTests(unittest.TestCase):
         self.assertIn("geo=FR", result["dataset"]["source_url"])
         self.assertEqual(len(result["rows"]), 4)
 
+    def test_extracts_answer_confidence_marker(self) -> None:
+        answer, confidence = answer_with_confidence(
+            "The published data directly supports the answer.\n<confidence>high</confidence>"
+        )
+
+        self.assertEqual(answer, "The published data directly supports the answer.")
+        self.assertEqual(confidence, "high")
+
+    def test_defaults_unmarked_answer_confidence_to_medium(self) -> None:
+        self.assertEqual(answer_with_confidence("A cautious answer."), ("A cautious answer.", "medium"))
+
     def test_result_validates_against_public_api_contract(self) -> None:
         result = build_structured_result(self.fetch_record)
         response = ChatResponse(
@@ -148,6 +160,7 @@ class StructuredResultTests(unittest.TestCase):
         self.assertEqual(response.result.dataset.code, "demo_pjan")
         self.assertEqual(response.result.chart.type, "line")
         self.assertEqual(response.tool_calls, 3)
+        self.assertEqual(response.confidence, "medium")
 
     def test_multiple_datasets_preserve_each_source_table(self) -> None:
         second_fetch = {
