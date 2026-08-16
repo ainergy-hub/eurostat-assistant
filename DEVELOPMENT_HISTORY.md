@@ -32,6 +32,26 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Prevent conflicting Eurostat time selectors
+
+- **Observed behavior:** A paired electricity-price and unemployment request completed catalogue
+  discovery and dimension inspection, but all observation fetches failed. Retrying could appear to
+  resolve the problem when the model happened to generate a different combination of arguments.
+- **Root cause:** The `fetch_eurostat` contract allowed an explicit `time` selection and
+  `last_time_period` in the same request. The host validation and CLI helper passed both through,
+  while the Eurostat Statistics API rejects `time`/`TIME_PERIOD` and `lastTimePeriod` together with
+  HTTP 400. One attempted retry removed `time=...` from `params` but retained the separate `time`
+  array, so the request remained invalid.
+- **Changed:** The tool schema now documents the selectors as mutually exclusive. Host preflight
+  validation and the CLI helper reject the conflict before network access, including when an
+  explicit time is supplied as a `time=...` entry in `params`. The error tells the agent to choose
+  exact periods or the latest N periods.
+- **Validation/impact:** Added regression coverage for both explicit-time input forms at the host
+  and CLI layers. The complete Python suite passes 81 tests, the JavaScript suite passes 38 tests,
+  and the affected electricity and unemployment filters were independently verified to return data
+  when either time-selection method is used alone. This changes invalid requests from a remote
+  Eurostat error into a deterministic, actionable local error; valid requests are unaffected.
+
 - Changed dimension inspection to read SDMX dataflow structure, codelists, and available-position
   constraints before falling back to a one-period Statistics API request. The normalized catalogue
   now supports matching independently of JSON-stat observation responses, including aliases for

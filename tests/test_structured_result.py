@@ -1430,6 +1430,28 @@ class StructuredResultTests(unittest.TestCase):
             ),
         )
 
+    def test_fetch_preflight_rejects_conflicting_time_selectors(self) -> None:
+        catalog = {
+            "demo": {
+                "geo": {"size": 1, "codes": ["DE"], "complete": True},
+                "time": {"size": 2, "codes": ["2024", "2025"], "complete": True},
+            }
+        }
+
+        for arguments in (
+            {"dataset": "demo", "time": ["2024"], "last_time_period": 1},
+            {
+                "dataset": "demo",
+                "params": ["time=2024"],
+                "last_time_period": 1,
+            },
+        ):
+            with self.subTest(arguments=arguments):
+                self.assertIn(
+                    "mutually exclusive",
+                    validate_fetch_arguments(arguments, catalog),
+                )
+
     @patch("app.agent_tools.run_helper")
     def test_fetch_tool_runs_dimension_preflight_before_observation_request(self, helper_mock) -> None:
         helper_mock.return_value = json.dumps(

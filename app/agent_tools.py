@@ -335,6 +335,11 @@ def validate_fetch_arguments(
             return (
                 f"ERROR: last_time_period must be between 1 and {MAX_TIME_PERIODS}."
             )
+        if explicit_times and last_time_period is not None:
+            return (
+                "ERROR: Explicit time values and last_time_period are mutually exclusive. "
+                "Choose exact time values or the latest N periods, not both."
+            )
         if not explicit_times and last_time_period is None:
             return (
                 f"ERROR: A bounded time filter is required for {dataset}. Pass time values or "

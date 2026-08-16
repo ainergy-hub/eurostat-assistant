@@ -170,11 +170,18 @@ TOOLS = [
                         "type": "integer",
                         "minimum": 1,
                         "maximum": MAX_TIME_PERIODS,
+                        "description": (
+                            "Fetch the latest N periods. Mutually exclusive with explicit time "
+                            "values, including time=... entries in params."
+                        ),
                     },
                     "time": {
                         "type": "array",
                         "items": {"type": "string"},
                         "maxItems": MAX_TIME_PERIODS,
+                        "description": (
+                            "Explicit periods to fetch. Mutually exclusive with last_time_period."
+                        ),
                     },
                     "reason": TOOL_REASON_PROPERTY,
                 },

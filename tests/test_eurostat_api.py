@@ -214,6 +214,24 @@ class EurostatApiTests(unittest.TestCase):
 
         get_json_mock.assert_not_called()
 
+    def test_fetch_rejects_conflicting_time_selectors_before_network_access(self) -> None:
+        for param, time in ((["geo=DE"], ["2024"]), (["geo=DE", "time=2024"], [])):
+            arguments = Namespace(
+                dataset="demo_pjan",
+                param=param,
+                last_time_period=1,
+                time=time,
+                max_rows=500,
+                output="json",
+            )
+
+            with self.subTest(param=param, time=time):
+                with patch("scripts.eurostat_api.get_json") as get_json_mock:
+                    with self.assertRaisesRegex(SystemExit, "mutually exclusive"):
+                        fetch(arguments)
+
+                get_json_mock.assert_not_called()
+
     def test_coordinates_follow_json_stat_row_major_order(self) -> None:
         self.assertEqual(coords_from_index(0, [2, 3]), [0, 0])
         self.assertEqual(coords_from_index(4, [2, 3]), [1, 1])

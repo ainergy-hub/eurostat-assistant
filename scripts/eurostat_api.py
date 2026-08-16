@@ -661,6 +661,11 @@ def fetch(args: argparse.Namespace) -> None:
     for time_value in args.time:
         params.append(("time", time_value))
     requested_times = {value for key, value in params if key == "time"}
+    if requested_times and args.last_time_period is not None:
+        raise SystemExit(
+            "Explicit time values and --last-time-period are mutually exclusive. "
+            "Choose --time/--param time=... or --last-time-period, not both."
+        )
     if not requested_times and args.last_time_period is None:
         raise SystemExit(
             "A bounded time filter is required. Pass --time or --last-time-period."
