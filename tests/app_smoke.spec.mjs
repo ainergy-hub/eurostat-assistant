@@ -25,7 +25,7 @@ test("the assembled application starts without browser errors", async ({ page })
   await page.waitForLoadState("networkidle");
 
   await expect(
-    page.getByRole("heading", { name: "Explore Eurostat data." }),
+    page.getByRole("heading", { name: "Explore Eurostat Data." }),
   ).toBeVisible();
   await expect(
     page.getByRole("textbox", { name: "Investigation query" }),
@@ -74,7 +74,7 @@ test("settings opens as a minimal full-page overlay and closes from its top bar"
 
   await settingsOverlay.getByRole("button", { name: "Close settings" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Explore Eurostat data." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Explore Eurostat Data." })).toBeVisible();
 });
 
 test("the top info button opens accessible app information", async ({ page }) => {
