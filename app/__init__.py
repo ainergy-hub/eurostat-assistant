@@ -1,0 +1,1 @@
+"""Eurostat Assistant chat app."""

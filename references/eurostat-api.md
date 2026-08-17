@@ -6,6 +6,14 @@ Primary Statistics API:
 
 `https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/{dataset_code}`
 
+Metadata-first dimension inspection:
+
+`https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/dataflow/ESTAT/{DATASET}/1.0?references=descendants&detail=referencepartial&compress=false`
+
+Available dimension positions:
+
+`https://ec.europa.eu/eurostat/api/dissemination/sdmx/3.0/structure/dataconstraint/ESTAT/{DATASET}/1.0?compress=false`
+
 Dataset metadata / table of contents:
 
 `https://ec.europa.eu/eurostat/api/dissemination/catalogue/toc/txt?lang=en`
@@ -57,5 +65,10 @@ Prefer dynamic recent-period queries for current-answer prompts. Use exact `time
 For country comparisons, use ISO-like Eurostat `geo` codes (`DE`, `FR`, `IT`, `EU27_2020`). Regional data uses NUTS codes and may require `geoLevel` or exact region codes.
 
 For large dimensions, fetch only the requested unit/category/time/geography. Broad unfiltered requests may fail or be too large to parse usefully.
+
+Dimension inspection must not depend on an observation request. Read the SDMX dataflow, DSD,
+referenced codelists, and Data Constraint first. Use the one-period Statistics API inspector only
+when structural metadata is unavailable or malformed. A failure of a broad observation request
+does not imply that dataset metadata is inaccessible.
 
 If a query returns no observations, inspect dimension labels and try alternative unit or indicator codes before concluding no data exists.

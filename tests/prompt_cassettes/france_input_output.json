@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "scenario_id": "france_input_output",
+  "turns": [
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-io-2022",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"naio_10_cp1700\",\"params\":[\"geo=FR\",\"unit=MIO_EUR\"],\"time\":[\"2022\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "A 2023 French input-output table is not available; the latest returned reference year is 2022 in [naio_10_cp1700](https://ec.europa.eu/eurostat/databrowser/view/naio_10_cp1700/default/table?lang=en)."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "naio_10_cp1700",
+            "params": ["geo=FR", "unit=MIO_EUR"],
+            "time": ["2022"]
+          },
+          "output": {
+            "metadata": {
+              "label": "Symmetric input-output table at basic prices",
+              "updated": "2026-05-01T00:00:00+0200",
+              "total_rows": 4,
+              "returned_rows": 4,
+              "truncated": false
+            },
+            "rows": [
+              {"value": 1200.0, "geo": "FR", "geo_label": "France", "unit": "MIO_EUR", "unit_label": "Million euro", "row": "A", "row_label": "Agriculture", "column": "C", "column_label": "Manufacturing", "time": "2022", "time_label": "2022"},
+              {"value": 860.0, "geo": "FR", "geo_label": "France", "unit": "MIO_EUR", "unit_label": "Million euro", "row": "A", "row_label": "Agriculture", "column": "G", "column_label": "Trade", "time": "2022", "time_label": "2022"},
+              {"value": 5420.0, "geo": "FR", "geo_label": "France", "unit": "MIO_EUR", "unit_label": "Million euro", "row": "C", "row_label": "Manufacturing", "column": "C", "column_label": "Manufacturing", "time": "2022", "time_label": "2022"},
+              {"value": 2110.0, "geo": "FR", "geo_label": "France", "unit": "MIO_EUR", "unit_label": "Million euro", "row": "C", "row_label": "Manufacturing", "column": "G", "column_label": "Trade", "time": "2022", "time_label": "2022"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

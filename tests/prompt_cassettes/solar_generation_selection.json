@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "scenario_id": "solar_generation_selection",
+  "turns": [
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "inspect-solar",
+                    "type": "function",
+                    "function": {
+                      "name": "inspect_dimensions",
+                      "arguments": "{\"dataset\":\"nrg_bal_peh\",\"matches\":[\"solar generation\",\"Germany\",\"France\",\"gigawatt-hour\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-pv",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"nrg_bal_peh\",\"params\":[\"freq=A\",\"nrg_bal=GEP\",\"siec=RA420\",\"unit=GWH\",\"geo=DE,FR\"],\"time\":[\"2000\",\"2010\",\"2024\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-thermal-check",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"nrg_bal_peh\",\"params\":[\"freq=A\",\"nrg_bal=GEP\",\"siec=RA410\",\"unit=GWH\",\"geo=DE,FR\"],\"time\":[\"2000\",\"2010\",\"2024\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "publish-pv",
+                    "type": "function",
+                    "function": {
+                      "name": "publish_result",
+                      "arguments": "{\"result_ids\":[\"fetch-1\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "I interpret solar electricity generation as solar photovoltaic because this dataset has no aggregate solar category. Photovoltaic output rose strongly in both countries in [nrg_bal_peh](https://ec.europa.eu/eurostat/databrowser/view/nrg_bal_peh/default/table?lang=en)."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "inspect_dimensions",
+          "arguments": {
+            "dataset": "nrg_bal_peh",
+            "matches": ["solar generation", "Germany", "France", "gigawatt-hour"]
+          },
+          "output": {
+            "dataset": "nrg_bal_peh",
+            "label": "Production of electricity and derived heat by type of fuel",
+            "dimensions": [
+              {"id": "freq", "size": 1, "sample_categories": [{"code": "A", "label": "Annual"}]},
+              {"id": "nrg_bal", "size": 1, "sample_categories": [{"code": "GEP", "label": "Gross electricity production"}]},
+              {"id": "siec", "size": 75, "sample_categories": [{"code": "TOTAL", "label": "Total"}]},
+              {"id": "unit", "size": 1, "sample_categories": [{"code": "GWH", "label": "Gigawatt-hour"}]},
+              {"id": "geo", "size": 2, "sample_categories": [{"code": "DE", "label": "Germany"}, {"code": "FR", "label": "France"}]}
+            ],
+            "matches": [
+              {"query": "solar generation", "categories": [{"dimension": "siec", "code": "RA410", "label": "Solar thermal"}, {"dimension": "siec", "code": "RA420", "label": "Solar photovoltaic"}]},
+              {"query": "Germany", "categories": [{"dimension": "geo", "code": "DE", "label": "Germany"}]},
+              {"query": "France", "categories": [{"dimension": "geo", "code": "FR", "label": "France"}]},
+              {"query": "gigawatt-hour", "categories": [{"dimension": "unit", "code": "GWH", "label": "Gigawatt-hour"}]}
+            ]
+          }
+        },
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "nrg_bal_peh",
+            "params": ["freq=A", "nrg_bal=GEP", "siec=RA420", "unit=GWH", "geo=DE,FR"],
+            "time": ["2000", "2010", "2024"]
+          },
+          "output": {
+            "metadata": {
+              "label": "Production of electricity and derived heat by type of fuel",
+              "updated": "2026-06-02T23:00:00+0200",
+              "total_rows": 6,
+              "returned_rows": 6,
+              "truncated": false
+            },
+            "rows": [
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA420", "siec_label": "Solar photovoltaic", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "DE", "geo_label": "Germany", "time": "2000", "time_label": "2000"},
+              {"value": 11729.0, "nrg_bal": "GEP", "siec": "RA420", "siec_label": "Solar photovoltaic", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "DE", "geo_label": "Germany", "time": "2010", "time_label": "2010"},
+              {"value": 75379.0, "nrg_bal": "GEP", "siec": "RA420", "siec_label": "Solar photovoltaic", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "DE", "geo_label": "Germany", "time": "2024", "time_label": "2024"},
+              {"value": 5.0, "nrg_bal": "GEP", "siec": "RA420", "siec_label": "Solar photovoltaic", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "FR", "geo_label": "France", "time": "2000", "time_label": "2000"},
+              {"value": 620.0, "nrg_bal": "GEP", "siec": "RA420", "siec_label": "Solar photovoltaic", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "FR", "geo_label": "France", "time": "2010", "time_label": "2010"},
+              {"value": 25062.942, "nrg_bal": "GEP", "siec": "RA420", "siec_label": "Solar photovoltaic", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "FR", "geo_label": "France", "time": "2024", "time_label": "2024"}
+            ]
+          }
+        },
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "nrg_bal_peh",
+            "params": ["freq=A", "nrg_bal=GEP", "siec=RA410", "unit=GWH", "geo=DE,FR"],
+            "time": ["2000", "2010", "2024"]
+          },
+          "output": {
+            "metadata": {
+              "label": "Production of electricity and derived heat by type of fuel",
+              "updated": "2026-06-02T23:00:00+0200",
+              "total_rows": 6,
+              "returned_rows": 6,
+              "truncated": false
+            },
+            "rows": [
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA410", "siec_label": "Solar thermal", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "DE", "geo_label": "Germany", "time": "2000", "time_label": "2000"},
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA410", "siec_label": "Solar thermal", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "DE", "geo_label": "Germany", "time": "2010", "time_label": "2010"},
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA410", "siec_label": "Solar thermal", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "DE", "geo_label": "Germany", "time": "2024", "time_label": "2024"},
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA410", "siec_label": "Solar thermal", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "FR", "geo_label": "France", "time": "2000", "time_label": "2000"},
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA410", "siec_label": "Solar thermal", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "FR", "geo_label": "France", "time": "2010", "time_label": "2010"},
+              {"value": 0.0, "nrg_bal": "GEP", "siec": "RA410", "siec_label": "Solar thermal", "unit": "GWH", "unit_label": "Gigawatt-hour", "geo": "FR", "geo_label": "France", "time": "2024", "time_label": "2024"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

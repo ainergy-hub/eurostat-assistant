@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "france_agriculture_manufacturing_inputs",
+  "tags": ["input-output", "large-dataset", "metadata-first", "no-chart", "smoke"],
+  "turns": [
+    {
+      "prompt": "Using Eurostat dataset naio_10_fcp_ii4, get France's 2022 agriculture (A01) inputs into manufacturing sectors (C10-C12 through C33), in million euro, including domestic and imported origins.",
+      "expect": {
+        "result": "present",
+        "dataset": "naio_10_fcp_ii4",
+        "filters": {
+          "freq": ["A"],
+          "ind_ava": ["A01"],
+          "ind_use": [
+            "C10-12",
+            "C13-15",
+            "C16",
+            "C17",
+            "C18",
+            "C19",
+            "C20",
+            "C21",
+            "C22",
+            "C23",
+            "C24",
+            "C25",
+            "C26",
+            "C27",
+            "C28",
+            "C29",
+            "C30",
+            "C31_32",
+            "C33"
+          ],
+          "c_dest": ["FR"],
+          "unit": ["MIO_EUR"],
+          "time": ["2022"]
+        },
+        "row_count": 5,
+        "required_rows": [
+          {
+            "c_dest": "FR",
+            "time": "2022",
+            "ind_ava": "A01",
+            "ind_use": "C10-12",
+            "c_orig": "AL"
+          },
+          {
+            "c_dest": "FR",
+            "time": "2022",
+            "ind_ava": "A01",
+            "ind_use": "C10-12",
+            "c_orig": "BE"
+          }
+        ],
+        "numeric": [{"field": "value", "op": "all_nonzero"}],
+        "chart": {"type": "none"},
+        "tools": ["inspect_dimensions", "fetch_eurostat"],
+        "no_tool_errors": true,
+        "answer_contains": ["origin-resolved", "2022", "naio_10_fcp_ii4"],
+        "answer_not_contains": ["technical barrier", "cannot inspect", "Data Browser interface"],
+        "warnings_contain": ["Showing 5 of 950"],
+        "provenance": true
+      }
+    }
+  ]
+}

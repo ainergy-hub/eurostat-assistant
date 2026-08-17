@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "scenario_id": "occitanie_inflation_no_data",
+  "turns": [
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "search-inflation",
+                    "type": "function",
+                    "function": {
+                      "name": "search_eurostat",
+                      "arguments": "{\"query\":\"regional inflation harmonised consumer prices\",\"limit\":5}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "inspect-hicp",
+                    "type": "function",
+                    "function": {
+                      "name": "inspect_dimensions",
+                      "arguments": "{\"dataset\":\"prc_hicp_aind\",\"matches\":[\"Occitanie\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "Eurostat's harmonised inflation dataset is national rather than regional, so an Occitanie value for 2024 is not available in this source."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "search_eurostat",
+          "arguments": {
+            "query": "regional inflation harmonised consumer prices",
+            "limit": 5
+          },
+          "output": [
+            {
+              "code": "prc_hicp_aind",
+              "title": "HICP - annual data (average index and rate of change)",
+              "type": "dataset",
+              "data_end": "2025"
+            }
+          ]
+        },
+        {
+          "name": "inspect_dimensions",
+          "arguments": {
+            "dataset": "prc_hicp_aind",
+            "matches": ["Occitanie"]
+          },
+          "output": {
+            "dataset": "prc_hicp_aind",
+            "label": "HICP - annual data",
+            "dimensions": [
+              {"id": "unit", "size": 2, "sample_categories": [{"code": "RCH_A_AVG", "label": "Annual average rate of change"}]},
+              {"id": "geo", "size": 41, "sample_categories": [{"code": "FR", "label": "France"}]}
+            ],
+            "matches": [
+              {"query": "Occitanie", "categories": []}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

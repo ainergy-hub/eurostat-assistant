@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "id": "regional_unemployment",
+  "tags": ["regional", "chart", "smoke"],
+  "global_expect": {
+    "forbid_tool_markup": true,
+    "forbid_duplicate_tools": true
+  },
+  "turns": [
+    {
+      "prompt": "Compare the unemployment rate in Spain and Portugal over the latest 8 years.",
+      "expect": {
+        "result": "present",
+        "dataset": "une_rt_a",
+        "filters": {
+          "geo": ["ES", "PT"],
+          "unit": ["PC_ACT"],
+          "lastTimePeriod": ["8"]
+        },
+        "row_count": 16,
+        "row_unique_by": ["geo", "time"],
+        "required_rows": [
+          {"geo": "ES", "time": "2025"},
+          {"geo": "PT", "time": "2025"}
+        ],
+        "chart": {
+          "type": "line",
+          "x": "time_label",
+          "y": "value",
+          "series": "geo_label",
+          "x_label": "Period",
+          "y_label": "Percentage of active population"
+        },
+        "tools": ["fetch_eurostat"],
+        "no_tool_errors": true,
+        "provenance": true
+      }
+    },
+    {
+      "prompt": "Compare unemployment rates of Baden-Württemberg and Castille and Léon from 2018 to 2025",
+      "expect": {
+        "result": "present",
+        "dataset": "lfst_r_lfu3rt",
+        "forbidden_datasets": ["une_rt_a"],
+        "filters": {
+          "geo": ["DE1", "ES41"],
+          "time": ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+        },
+        "row_count": 16,
+        "row_unique_by": ["geo", "time"],
+        "required_rows": [
+          {"geo": "DE1", "geo_label": "Baden-Württemberg", "time": "2018"},
+          {"geo": "ES41", "geo_label": "Castilla y León", "time": "2025"}
+        ],
+        "chart": {
+          "type": "line",
+          "x": "time_label",
+          "y": "value",
+          "series": "geo_label",
+          "x_label": "Period",
+          "y_label": "Percentage"
+        },
+        "tools": ["inspect_dimensions", "fetch_eurostat"],
+        "no_tool_errors": true,
+        "answer_not_contains": ["<tool_call>", "Spain and Portugal"],
+        "provenance": true
+      }
+    }
+  ]
+}

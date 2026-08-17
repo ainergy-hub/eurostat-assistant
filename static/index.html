@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Ask questions of official Eurostat data and receive a sourced answer, chart, and table."
+    />
+    <title>Eurostat Assistant — Ask official European data</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <script src="/static/theme.js"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260817-5" />
+  </head>
+  <body>
+    <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
+      <div class="lock-card">
+        <div class="logo-lockup lock-logo" aria-label="Eurostat Assistant">
+          <span class="lock-mark" aria-hidden="true"></span>
+          <span class="logo-type">
+            <strong>Eurostat</strong>
+            <span>Assistant</span>
+          </span>
+        </div>
+        <h1 id="app-lock-title">Welcome back</h1>
+        <form class="lock-form" id="app-lock-form">
+          <label for="app-lock-password">App password</label>
+          <input
+            id="app-lock-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            maxlength="512"
+            required
+          />
+          <button class="send-button" id="app-unlock-button" type="submit">
+            <span>Unlock app</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+        <p class="lock-error" id="app-lock-error" role="alert" hidden></p>
+      </div>
+    </section>
+
+    <div class="app-layout" id="app-layout" inert hidden>
+      <aside class="sidebar" id="sidebar" aria-label="Investigations">
+        <div class="sidebar-header">
+          <a class="brand" href="/" aria-label="Eurostat Assistant home">
+            <span class="brand-mark" aria-hidden="true"></span>
+            <span class="brand-copy">
+              <strong>Eurostat</strong>
+              <span>Assistant</span>
+            </span>
+          </a>
+          <button class="sidebar-close" id="sidebar-close" type="button" aria-label="Close chat list">
+            ×
+          </button>
+        </div>
+
+        <button class="new-chat-button" id="new-chat" type="button">
+          <span>New chat</span>
+          <span aria-hidden="true">＋</span>
+        </button>
+
+        <button class="tool-activity" id="tool-activity" type="button" hidden>
+          <span class="tool-activity-copy">
+            <span class="tool-activity-label">Tool calls</span>
+            <span class="tool-activity-status" id="tool-activity-status">Starting agent</span>
+          </span>
+          <strong class="tool-activity-count" id="tool-activity-count" aria-live="polite">0</strong>
+        </button>
+
+        <div class="chat-nav-heading">
+          <span>History</span>
+          <span id="chat-count">0</span>
+        </div>
+        <nav class="chat-list" id="chat-list" aria-label="Saved chats"></nav>
+
+        <div class="sidebar-foot">
+          <span class="local-icon" aria-hidden="true">◌</span>
+          <p>
+            AI can make mistakes.
+          </p>
+        </div>
+      </aside>
+      <button class="sidebar-backdrop" id="sidebar-backdrop" type="button" aria-label="Close chat list"></button>
+
+      <main class="shell">
+        <header class="topbar">
+          <div class="thread-identity">
+            <button class="menu-button" id="menu-button" type="button" aria-label="Open chat list">
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 7h16M4 12h16M4 17h16"></path>
+              </svg>
+            </button>
+            <div>
+              <strong class="thread-title" id="current-chat-title">New investigation</strong>
+            </div>
+          </div>
+          <div class="topbar-meta">
+            <button
+              class="info-button"
+              id="info-button"
+              type="button"
+              title="About this app"
+              aria-label="About this app"
+            >
+              <span class="utility-label">About this app</span>
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"></circle>
+                <path d="M12 11v6M12 7.25v.5"></path>
+              </svg>
+            </button>
+            <button
+              class="development-button"
+              id="development-link"
+              type="button"
+              title="Development settings"
+              aria-label="Open development settings"
+            >
+              <span class="utility-label">Development settings</span>
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4A2 2 0 0 0 4 9.9l.2.1a2 2 0 0 1 1 1.7v.6a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.6a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+            <button
+              class="theme-toggle-button"
+              id="theme-toggle"
+              type="button"
+              title="Use dark mode"
+              aria-label="Use dark mode"
+            >
+              <span class="theme-toggle-label utility-label">Dark mode</span>
+              <span class="theme-toggle-icon" aria-hidden="true">
+                <svg class="topbar-icon icon-sun" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="3.5"></circle>
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"></path>
+                </svg>
+                <svg class="topbar-icon icon-moon" viewBox="0 0 24 24">
+                  <path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2Z"></path>
+                </svg>
+              </span>
+            </button>
+            <button
+              class="lock-app-button"
+              id="lock-app"
+              type="button"
+              title="Lock app"
+              aria-label="Lock app"
+              hidden
+            >
+              <span class="utility-label">Lock app</span>
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="5" y="10" width="14" height="10"></rect>
+                <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"></path>
+              </svg>
+            </button>
+            <button
+              class="download-log-button"
+              id="download-chat-log"
+              type="button"
+              title="Download the current investigation as a JSON log"
+            >
+              <span class="utility-label">Download log</span>
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v11M8 10l4 4 4-4M5 19h14"></path>
+              </svg>
+            </button>
+            <span class="context-status" id="context-status" hidden>Older context compacted</span>
+            <div class="status-wrap" aria-live="polite" hidden>
+              <span class="status-dot" aria-hidden="true"></span>
+              <span class="status" id="status"></span>
+            </div>
+          </div>
+        </header>
+
+        <section
+          class="development-page"
+          id="development-page"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="development-page-title"
+          hidden
+        >
+          <header class="development-topbar">
+            <strong class="thread-title" id="development-page-title">Development settings</strong>
+            <button
+              class="settings-close-button"
+              id="settings-close"
+              type="button"
+              title="Close settings"
+              aria-label="Close settings"
+            >
+              <svg class="topbar-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 5l14 14M19 5 5 19"></path>
+              </svg>
+            </button>
+          </header>
+          <header class="development-hero">
+            <div class="development-heading">
+              <p class="eyebrow">Settings / Development</p>
+              <h1 id="development-title">How the agent works.</h1>
+            </div>
+            <div class="development-intro">
+              <p>
+                Choose the model used for new questions and inspect the four bounded tools,
+                query safeguards, runtime, and privacy rules behind each answer.
+              </p>
+            </div>
+          </header>
+
+          <div class="development-summary" aria-label="Development configuration summary">
+            <div class="development-metric">
+              <span>Active model</span>
+              <strong id="active-model-summary">Loading…</strong>
+            </div>
+            <div class="development-metric">
+              <span>Available tools</span>
+              <strong id="tool-count-summary">—</strong>
+            </div>
+          </div>
+
+          <div class="settings-stack">
+            <section class="settings-panel" aria-labelledby="model-settings-title">
+              <header class="settings-panel-header">
+                <span class="settings-index">01</span>
+                <div>
+                  <span class="settings-kicker">Response engine</span>
+                  <h2 id="model-settings-title">Model</h2>
+                </div>
+              </header>
+              <div class="model-settings-grid">
+                <label class="settings-field" for="model-select">
+                  <span>Model for new questions</span>
+                  <select id="model-select" disabled>
+                    <option>Loading available models…</option>
+                  </select>
+                </label>
+                <div class="model-description" aria-live="polite">
+                  <span class="settings-kicker">Why choose this</span>
+                  <p id="model-description">Reading deployment settings…</p>
+                  <span class="settings-save-status" id="settings-save-status"></span>
+                </div>
+              </div>
+              <p class="settings-note">
+                The choice is saved only in this browser and is sent with future questions.
+                Existing investigations are not re-run.
+              </p>
+            </section>
+
+            <section class="settings-panel" aria-labelledby="workflow-title">
+              <header class="settings-panel-header">
+                <span class="settings-index">02</span>
+                <div>
+                  <span class="settings-kicker">Request lifecycle</span>
+                  <h2 id="workflow-title">What happens after you ask</h2>
+                </div>
+              </header>
+              <ol class="workflow-strip">
+                <li>
+                  <span>01</span>
+                  <strong>Understand</strong>
+                  <p>The model reads your question and the bounded recent context.</p>
+                </li>
+                <li>
+                  <span>02</span>
+                  <strong>Retrieve</strong>
+                  <p>Three data tools search, inspect, and fetch official Eurostat observations.</p>
+                </li>
+                <li>
+                  <span>03</span>
+                  <strong>Validate</strong>
+                  <p>The host bounds time, estimated cells, response bytes, filters, and chart fields.</p>
+                </li>
+                <li>
+                  <span>04</span>
+                  <strong>Present</strong>
+                  <p>One publication tool selects, pairs, or re-charts rows for safe rendering.</p>
+                </li>
+              </ol>
+            </section>
+
+            <section class="settings-panel" aria-labelledby="tools-title">
+              <header class="settings-panel-header">
+                <span class="settings-index">03</span>
+                <div>
+                  <span class="settings-kicker">Allow-listed capabilities</span>
+                  <h2 id="tools-title">Tools the agent can use</h2>
+                  <p>Search, inspect, fetch, and publish—nothing else can be invoked.</p>
+                </div>
+              </header>
+              <div class="tool-catalog" id="development-tool-catalog">
+                <p class="settings-loading">Loading tool descriptions…</p>
+              </div>
+            </section>
+
+            <section class="settings-panel settings-panel-split" aria-labelledby="runtime-title">
+              <div>
+                <header class="settings-panel-header">
+                  <span class="settings-index">04</span>
+                  <div>
+                    <span class="settings-kicker">System boundaries</span>
+                    <h2 id="runtime-title">Runtime &amp; privacy</h2>
+                  </div>
+                </header>
+                <dl class="runtime-list" id="runtime-list">
+                  <div><dt>Runtime</dt><dd>Loading…</dd></div>
+                </dl>
+              </div>
+              <div class="boundary-copy">
+                <span class="settings-kicker">Built-in guardrails</span>
+                <ul>
+                  <li>Only the listed tools can be called.</li>
+                  <li>Every fetch requires a bounded time selection.</li>
+                  <li>Cell estimates and Eurostat response bytes are capped before rendering.</li>
+                  <li>Each run has strict tool-call, period, and result-row limits.</li>
+                  <li>Model-authored HTML and JavaScript never execute.</li>
+                  <li>Chat history stays in this browser’s IndexedDB.</li>
+                </ul>
+              </div>
+            </section>
+
+            <footer class="development-footer">
+              <span>Eurostat Assistant <strong id="development-app-version">v—</strong></span>
+            </footer>
+          </div>
+        </section>
+
+        <section class="hero" id="hero" data-chat-view>
+          <h1>Explore Eurostat Data.</h1>
+          <div class="suggestions" aria-label="Example investigations">
+            <button
+              class="suggestion"
+              type="button"
+              data-prompt="Compare the population of Germany, France, and Italy over the latest 5 years."
+            >
+              <span>Population trends</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button
+              class="suggestion"
+              type="button"
+              data-prompt="How has annual inflation changed in the EU since 2020?"
+            >
+              <span>EU inflation</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+            <button
+              class="suggestion"
+              type="button"
+              data-prompt="Compare the unemployment rate in Spain and Portugal over the latest 8 years."
+            >
+              <span>Iberian unemployment</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="conversation" id="chat" aria-live="polite" data-chat-view></section>
+
+        <section class="ask-panel" aria-label="Ask Eurostat" data-chat-view>
+          <form class="composer" id="composer">
+            <label class="sr-only" for="prompt">Investigation query</label>
+            <textarea
+              id="prompt"
+              name="prompt"
+              rows="1"
+              maxlength="4000"
+              placeholder="Ask about population, inflation, jobs…"
+              autocomplete="off"
+              required
+            ></textarea>
+            <button class="send-button" type="submit" id="send">
+              <span>Ask</span>
+              <span aria-hidden="true">↗</span>
+            </button>
+          </form>
+        </section>
+
+        <footer data-chat-view>
+          <a href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
+            Eurostat source ↗
+          </a>
+        </footer>
+      </main>
+    </div>
+
+    <dialog class="tool-call-dialog about-dialog" id="about-dialog" aria-labelledby="about-dialog-title">
+      <div class="tool-call-dialog-header">
+        <div>
+          <span class="thread-label">Eurostat Assistant</span>
+          <h2 id="about-dialog-title">About this app</h2>
+        </div>
+        <button class="dialog-close" id="about-dialog-close" type="button" aria-label="Close app information">
+          ×
+        </button>
+      </div>
+      <div class="about-dialog-body">
+        <p class="about-dialog-intro">
+          Ask questions in plain language and get sourced answers, charts, and tables from
+          official European statistics.
+        </p>
+        <dl class="about-facts">
+          <div>
+            <dt>Data</dt>
+            <dd>Official Eurostat dissemination datasets</dd>
+          </div>
+          <div>
+            <dt>History</dt>
+            <dd>Saved locally in this browser</dd>
+          </div>
+          <div>
+            <dt>Version</dt>
+            <dd id="about-app-version">—</dd>
+          </div>
+        </dl>
+        <section class="about-tips" aria-labelledby="about-tips-title">
+          <h3 id="about-tips-title">Tips</h3>
+          <ol>
+            <li>
+              Start a new chat for each new investigation instead of continuing in the same thread.
+            </li>
+            <li>
+              If the agent fails to complete a response, select <strong>Retry</strong> to run the
+              question again.
+            </li>
+          </ol>
+        </section>
+        <p class="about-caveat">
+          AI can make mistakes. Check the linked dataset and methodology before relying on a result.
+        </p>
+        <a class="about-source-link" href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
+          Visit Eurostat <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+    </dialog>
+
+    <div
+      class="notification"
+      id="notification"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      hidden
+    >
+      <span class="notification-mark" aria-hidden="true">i</span>
+      <span id="notification-message"></span>
+      <button
+        class="notification-dismiss"
+        id="notification-dismiss"
+        type="button"
+        aria-label="Dismiss notification"
+      >
+        ×
+      </button>
+    </div>
+
+    <dialog class="tool-call-dialog" id="tool-call-dialog" aria-labelledby="tool-call-dialog-title">
+      <div class="tool-call-dialog-header">
+        <div>
+          <span class="thread-label">Response log</span>
+          <h2 id="tool-call-dialog-title">Agent trace</h2>
+        </div>
+        <button class="dialog-close" id="tool-call-dialog-close" type="button" aria-label="Close agent trace">
+          ×
+        </button>
+      </div>
+      <div class="tool-call-dialog-summary" id="tool-call-dialog-summary">No tool calls yet.</div>
+      <ol class="tool-call-details" id="tool-call-details"></ol>
+    </dialog>
+
+    <dialog
+      class="api-query-panel"
+      id="api-query-panel"
+      aria-labelledby="api-query-panel-title"
+    >
+      <header class="api-query-panel-header">
+        <div>
+          <span class="thread-label">Eurostat API query</span>
+          <h2 id="api-query-panel-title">Query results</h2>
+        </div>
+        <button
+          class="dialog-close"
+          id="api-query-panel-close"
+          type="button"
+          aria-label="Close API query results"
+        >
+          ×
+        </button>
+      </header>
+      <div class="api-query-panel-body" id="api-query-panel-body"></div>
+    </dialog>
+
+    <template id="pending-template">
+      <article class="response pending-response">
+        <div class="response-kicker">Eurostat agent</div>
+        <div class="progress-row">
+          <div class="loader" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p class="progress-label">Finding candidate datasets</p>
+        </div>
+        <div class="progress-purpose" aria-live="polite" hidden>
+          <span class="progress-purpose-label">Purpose</span>
+          <p class="progress-purpose-text"></p>
+        </div>
+      </article>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
+    <script src="/static/app.js?v=20260817-2" type="module"></script>
+  </body>
+</html>

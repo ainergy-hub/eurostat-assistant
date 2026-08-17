@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "solar_generation_selection",
+  "tags": ["energy", "chart", "selection", "smoke"],
+  "turns": [
+    {
+      "prompt": "Solar generation since 2000 in Germany and France",
+      "expect": {
+        "result": "present",
+        "dataset": "nrg_bal_peh",
+        "filters": {
+          "geo": ["DE", "FR"],
+          "siec": ["RA420"],
+          "unit": ["GWH"]
+        },
+        "row_count": 6,
+        "row_unique_by": ["geo", "time"],
+        "required_rows": [
+          {"geo": "DE", "siec": "RA420", "siec_label": "Solar photovoltaic"},
+          {"geo": "FR", "siec": "RA420", "siec_label": "Solar photovoltaic"}
+        ],
+        "numeric": [
+          {"field": "value", "op": "any_nonzero", "where": {"geo": "DE"}},
+          {"field": "value", "op": "any_nonzero", "where": {"geo": "FR"}}
+        ],
+        "chart": {
+          "type": "line",
+          "series": "geo_label",
+          "y_label": "Gigawatt-hour"
+        },
+        "tools": [
+          "inspect_dimensions",
+          "fetch_eurostat",
+          "fetch_eurostat",
+          "publish_result"
+        ],
+        "no_tool_errors": true,
+        "answer_contains": ["photovoltaic"],
+        "provenance": true
+      }
+    }
+  ]
+}

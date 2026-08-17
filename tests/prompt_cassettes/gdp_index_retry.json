@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "scenario_id": "gdp_index_retry",
+  "turns": [
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "<tool_call>inspect_dimensions<arg_key>dataset</arg_key><arg_value>nama_10_gdp</arg_value>"
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": []
+    },
+    {
+      "chat_responses": [
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "inspect-gdp",
+                    "type": "function",
+                    "function": {
+                      "name": "inspect_dimensions",
+                      "arguments": "{\"dataset\":\"nama_10_gdp\",\"matches\":[\"index 2005=100\",\"Gross domestic product\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "fetch-gdp-index",
+                    "type": "function",
+                    "function": {
+                      "name": "fetch_eurostat",
+                      "arguments": "{\"dataset\":\"nama_10_gdp\",\"params\":[\"freq=A\",\"unit=CLV_I05\",\"na_item=B1GQ\",\"geo=FR,DE,NL,ES\"],\"time\":[\"2005\",\"2025\"]}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "tool_calls": [
+                  {
+                    "id": "publish-gdp",
+                    "type": "function",
+                    "function": {
+                      "name": "publish_result",
+                      "arguments": "{\"result_ids\":[\"fetch-1\"],\"chart\":{\"purpose\":\"trend\",\"type\":\"line\",\"x\":\"time_label\",\"y\":\"value\",\"series\":\"geo_label\",\"x_label\":\"Period\",\"y_label\":\"Chain linked volumes, index 2005=100\",\"title\":\"Real GDP, 2005=100\"}}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "choices": [
+            {
+              "message": {
+                "role": "assistant",
+                "content": "The chart compares real GDP with 2005=100 for France, Germany, the Netherlands and Spain using [nama_10_gdp](https://ec.europa.eu/eurostat/databrowser/view/nama_10_gdp/default/table?lang=en)."
+              }
+            }
+          ]
+        }
+      ],
+      "tool_calls": [
+        {
+          "name": "inspect_dimensions",
+          "arguments": {
+            "dataset": "nama_10_gdp",
+            "matches": ["index 2005=100", "Gross domestic product"]
+          },
+          "output": {
+            "dataset": "nama_10_gdp",
+            "label": "Gross domestic product and main components",
+            "dimensions": [
+              {"id": "freq", "size": 1, "sample_categories": [{"code": "A", "label": "Annual"}]},
+              {"id": "unit", "size": 1, "sample_categories": [{"code": "CLV_I05", "label": "Chain linked volumes, index 2005=100"}]},
+              {"id": "na_item", "size": 1, "sample_categories": [{"code": "B1GQ", "label": "Gross domestic product at market prices"}]},
+              {"id": "geo", "size": 4, "sample_categories": [{"code": "FR", "label": "France"}, {"code": "DE", "label": "Germany"}, {"code": "NL", "label": "Netherlands"}, {"code": "ES", "label": "Spain"}]}
+            ],
+            "matches": [
+              {"query": "index 2005=100", "categories": [{"dimension": "unit", "code": "CLV_I05", "label": "Chain linked volumes, index 2005=100"}]},
+              {"query": "Gross domestic product", "categories": [{"dimension": "na_item", "code": "B1GQ", "label": "Gross domestic product at market prices"}]}
+            ]
+          }
+        },
+        {
+          "name": "fetch_eurostat",
+          "arguments": {
+            "dataset": "nama_10_gdp",
+            "params": ["freq=A", "unit=CLV_I05", "na_item=B1GQ", "geo=FR,DE,NL,ES"],
+            "time": ["2005", "2025"]
+          },
+          "output": {
+            "metadata": {
+              "label": "Gross domestic product and main components",
+              "updated": "2026-07-01T00:00:00+0200",
+              "total_rows": 8,
+              "returned_rows": 8,
+              "truncated": false
+            },
+            "rows": [
+              {"value": 100.0, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "FR", "geo_label": "France", "time": "2005", "time_label": "2005"},
+              {"value": 123.2, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "FR", "geo_label": "France", "time": "2025", "time_label": "2025"},
+              {"value": 100.0, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "DE", "geo_label": "Germany", "time": "2005", "time_label": "2005"},
+              {"value": 124.4, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "DE", "geo_label": "Germany", "time": "2025", "time_label": "2025"},
+              {"value": 100.0, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "NL", "geo_label": "Netherlands", "time": "2005", "time_label": "2005"},
+              {"value": 137.5, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "NL", "geo_label": "Netherlands", "time": "2025", "time_label": "2025"},
+              {"value": 100.0, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "ES", "geo_label": "Spain", "time": "2005", "time_label": "2005"},
+              {"value": 121.7, "unit": "CLV_I05", "unit_label": "Chain linked volumes, index 2005=100", "na_item": "B1GQ", "geo": "ES", "geo_label": "Spain", "time": "2025", "time_label": "2025"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
