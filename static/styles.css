@@ -2392,6 +2392,32 @@ footer a:hover {
   margin: 0;
 }
 
+.about-tips {
+  border: var(--border-hairline);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface);
+  padding: var(--space-4);
+}
+
+.about-tips h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--color-accent-dim);
+  font-size: 0.66rem;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+}
+
+.about-tips ol {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.about-tips li {
+  padding-left: var(--space-1);
+}
+
 .about-caveat {
   border-left: 3px solid var(--color-warning);
   background: var(--color-warning-soft);

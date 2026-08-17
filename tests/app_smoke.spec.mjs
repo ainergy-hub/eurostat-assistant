@@ -88,6 +88,17 @@ test("the top info button opens accessible app information", async ({ page }) =>
   await expect(aboutDialog).toBeVisible();
   await expect(aboutDialog.getByText("Official Eurostat dissemination datasets")).toBeVisible();
   await expect(aboutDialog.getByText("0.3.0", { exact: true })).toBeVisible();
+  await expect(aboutDialog.getByRole("heading", { name: "Tips" })).toBeVisible();
+  await expect(
+    aboutDialog.getByText(
+      "Start a new chat for each new investigation instead of continuing in the same thread.",
+    ),
+  ).toBeVisible();
+  await expect(
+    aboutDialog.getByText(
+      "If the agent fails to complete a response, select Retry to run the question again.",
+    ),
+  ).toBeVisible();
 
   await aboutDialog.getByRole("button", { name: "Close app information" }).click();
   await expect(aboutDialog).not.toBeVisible();
