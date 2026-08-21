@@ -2719,9 +2719,16 @@ footer a:hover {
 
   .topbar {
     min-height: 68px;
+    gap: var(--space-3);
+  }
+
+  .thread-identity {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .topbar-meta {
+    flex: 0 0 auto;
     gap: var(--space-2);
   }
 
@@ -2758,11 +2765,7 @@ footer a:hover {
   }
 
   .thread-title {
-    max-width: 30vw;
-  }
-
-  .thread-title {
-    max-width: 48vw;
+    max-width: 100%;
     font-size: 0.88rem;
   }
 
