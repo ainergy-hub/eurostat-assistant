@@ -47,6 +47,17 @@ test("the assembled application starts without browser errors", async ({ page })
   }));
   expect(historyRowLayout.height).toBe(40);
   expect(historyRowLayout.gap).toBe("2px");
+  const sidebarFooterLayout = await page.locator(".sidebar-foot").evaluate((footer) => {
+    const sidebar = footer.closest(".sidebar");
+    const footerBox = footer.getBoundingClientRect();
+    const sidebarBox = sidebar.getBoundingClientRect();
+    return {
+      bottomGap: sidebarBox.bottom - footerBox.bottom,
+      height: footerBox.height,
+    };
+  });
+  expect(sidebarFooterLayout.bottomGap).toBe(16);
+  expect(sidebarFooterLayout.height).toBeLessThan(60);
   expect(await page.locator(".chat-select").getAttribute("title")).toBeNull();
   await expect(page.locator(".chat-select-copy small")).toHaveCount(0);
   await expect(page.getByText("Agent ready", { exact: true })).toHaveCount(0);
