@@ -227,6 +227,16 @@ function renderToolCallDetails(details = currentToolCalls) {
   renderToolTrace(details);
 }
 
+function deactivateToolActivity() {
+  currentToolCalls = [];
+  toolActivity.hidden = false;
+  toolActivity.disabled = true;
+  toolActivity.className = "tool-activity inactive";
+  toolActivityCount.textContent = "0";
+  toolActivityStatus.textContent = "No calls for this chat";
+  renderToolCallDetails();
+}
+
 function updateToolActivity(detail) {
   const calls = updateInFlightToolCall(inFlightState, detail);
   if (state.activeChatId !== inFlightChatId) return;
@@ -234,6 +244,7 @@ function updateToolActivity(detail) {
   const running = currentToolCalls.filter((item) => item.status === "running").length;
   const failed = currentToolCalls.filter((item) => item.status === "error").length;
   toolActivity.hidden = false;
+  toolActivity.disabled = false;
   toolActivityCount.textContent = String(currentToolCalls.length);
   toolActivity.className = `tool-activity${running ? " running" : failed ? " error" : ""}`;
   toolActivityStatus.textContent = running
@@ -249,6 +260,7 @@ function startToolActivity() {
   if (inFlightState) inFlightState.toolCalls = currentToolCalls;
   if (state.activeChatId !== inFlightChatId) return;
   toolActivity.hidden = false;
+  toolActivity.disabled = false;
   toolActivity.className = "tool-activity running";
   toolActivityCount.textContent = "0";
   toolActivityStatus.textContent = "Starting agent";
@@ -257,11 +269,15 @@ function startToolActivity() {
 
 function renderFinishedToolActivity(details, total) {
   currentToolCalls = Array.isArray(details) ? details : [];
+  const callTotal = Number.isInteger(total) ? total : currentToolCalls.length;
+  if (callTotal === 0 && currentToolCalls.length === 0) {
+    deactivateToolActivity();
+    return;
+  }
   toolActivity.hidden = false;
+  toolActivity.disabled = false;
   toolActivity.className = "tool-activity";
-  toolActivityCount.textContent = String(
-    Number.isInteger(total) ? total : currentToolCalls.length,
-  );
+  toolActivityCount.textContent = String(callTotal);
   const failed = currentToolCalls.filter((item) => item.status === "error").length;
   if (failed) toolActivity.classList.add("error");
   toolActivityStatus.textContent = failed
@@ -280,6 +296,7 @@ function failToolActivity() {
   failInFlightState(inFlightState);
   if (state.activeChatId !== inFlightChatId) return;
   toolActivity.hidden = false;
+  toolActivity.disabled = false;
   toolActivity.className = "tool-activity error";
   toolActivityStatus.textContent = "Agent request failed · Select for details";
   renderToolCallDetails();
@@ -290,6 +307,7 @@ function syncToolActivity(record) {
     currentToolCalls = inFlightState.toolCalls;
     if (inFlightState.phase === "error") {
       toolActivity.hidden = false;
+      toolActivity.disabled = false;
       toolActivity.className = "tool-activity error";
       toolActivityCount.textContent = String(currentToolCalls.length);
       toolActivityStatus.textContent = "Agent request failed · Select for details";
@@ -297,23 +315,14 @@ function syncToolActivity(record) {
       return;
     }
     if (inFlightState.phase === "completed") {
-      toolActivity.hidden = false;
-      toolActivity.className = "tool-activity";
-      toolActivityCount.textContent = String(
-        inFlightState.toolCallTotal ?? currentToolCalls.length,
-      );
-      const failed = currentToolCalls.filter((item) => item.status === "error").length;
-      if (failed) toolActivity.classList.add("error");
-      toolActivityStatus.textContent = failed
-        ? `${failed} failed · Select for details`
-        : `${currentToolCalls.length} completed · Select for details`;
-      renderToolCallDetails();
+      renderFinishedToolActivity(currentToolCalls, inFlightState.toolCallTotal);
       return;
     }
 
     const running = currentToolCalls.filter((item) => item.status === "running").length;
     const failed = currentToolCalls.filter((item) => item.status === "error").length;
     toolActivity.hidden = false;
+    toolActivity.disabled = false;
     toolActivity.className = `tool-activity running${failed ? " error" : ""}`;
     toolActivityCount.textContent = String(currentToolCalls.length);
     toolActivityStatus.textContent = running
@@ -329,9 +338,7 @@ function syncToolActivity(record) {
     .reverse()
     .find((message) => message.role === "assistant" && message.toolCallDetails?.length);
   if (!latestWithDetails) {
-    currentToolCalls = [];
-    toolActivity.hidden = true;
-    renderToolCallDetails();
+    deactivateToolActivity();
     return;
   }
   renderFinishedToolActivity(

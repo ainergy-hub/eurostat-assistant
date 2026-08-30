@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;600;700&display=swap"
     />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260821-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260830-3" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -71,10 +71,10 @@
           <span aria-hidden="true">＋</span>
         </button>
 
-        <button class="tool-activity" id="tool-activity" type="button" hidden>
+        <button class="tool-activity inactive" id="tool-activity" type="button" disabled>
           <span class="tool-activity-copy">
             <span class="tool-activity-label">Tool calls</span>
-            <span class="tool-activity-status" id="tool-activity-status">Starting agent</span>
+            <span class="tool-activity-status" id="tool-activity-status">No calls for this chat</span>
           </span>
           <strong class="tool-activity-count" id="tool-activity-count" aria-live="polite">0</strong>
         </button>
@@ -337,13 +337,24 @@
         </section>
 
         <section class="hero" id="hero" data-chat-view>
-          <h1>Explore Eurostat Data.</h1>
+          <div class="hero-center">
+            <p class="eyebrow">
+              <span class="eyebrow-dot" aria-hidden="true"></span>
+              Official European statistics
+            </p>
+            <h1>Explore Eurostat Data.</h1>
+            <p class="hero-copy">
+              Ask a plain-language question. Get a sourced answer, a chart, and the data
+              behind it.
+            </p>
+          </div>
           <div class="suggestions" aria-label="Example investigations">
             <button
               class="suggestion"
               type="button"
               data-prompt="Compare the population of Germany, France, and Italy over the latest 5 years."
             >
+              <span class="suggestion-index" aria-hidden="true">01</span>
               <span>Population trends</span>
               <span aria-hidden="true">↗</span>
             </button>
@@ -352,6 +363,7 @@
               type="button"
               data-prompt="How has annual inflation changed in the EU since 2020?"
             >
+              <span class="suggestion-index" aria-hidden="true">02</span>
               <span>EU inflation</span>
               <span aria-hidden="true">↗</span>
             </button>
@@ -360,6 +372,7 @@
               type="button"
               data-prompt="Compare the unemployment rate in Spain and Portugal over the latest 8 years."
             >
+              <span class="suggestion-index" aria-hidden="true">03</span>
               <span>Iberian unemployment</span>
               <span aria-hidden="true">↗</span>
             </button>
@@ -382,7 +395,7 @@
             ></textarea>
             <button class="send-button" type="submit" id="send">
               <span>Ask</span>
-              <span aria-hidden="true">↗</span>
+              <kbd aria-hidden="true">↵</kbd>
             </button>
           </form>
         </section>
@@ -518,6 +531,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20260817-2" type="module"></script>
+    <script src="/static/app.js?v=20260830-1" type="module"></script>
   </body>
 </html>

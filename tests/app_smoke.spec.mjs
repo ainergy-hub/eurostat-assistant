@@ -47,6 +47,10 @@ test("the assembled application starts without browser errors", async ({ page })
   }));
   expect(historyRowLayout.height).toBe(40);
   expect(historyRowLayout.gap).toBe("2px");
+  const inactiveToolActivity = page.getByRole("button", { name: /Tool calls/ });
+  await expect(inactiveToolActivity).toBeVisible();
+  await expect(inactiveToolActivity).toBeDisabled();
+  await expect(inactiveToolActivity).toContainText("No calls for this chat");
   const sidebarFooterLayout = await page.locator(".sidebar-foot").evaluate((footer) => {
     const sidebar = footer.closest(".sidebar");
     const footerBox = footer.getBoundingClientRect();
@@ -62,6 +66,69 @@ test("the assembled application starts without browser errors", async ({ page })
   await expect(page.locator(".chat-select-copy small")).toHaveCount(0);
   await expect(page.getByText("Agent ready", { exact: true })).toHaveCount(0);
   expect(browserErrors).toEqual([]);
+});
+
+test("tool activity stays in place while its state changes", async ({ page }) => {
+  const toolCall = {
+    id: "call-1",
+    index: 0,
+    name: "search_eurostat_datasets",
+    status: "completed",
+    reason: "Find the population dataset.",
+    arguments: { query: "population" },
+    result_preview: "Found demo_pjan.",
+    duration_ms: 12,
+  };
+  await page.route("**/api/chat/title", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ title: "Population lookup", model: "test/model" }),
+    }),
+  );
+  await page.route("**/api/chat/stream", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: [
+        JSON.stringify({ type: "tool_call", phase: "completed", call: toolCall }),
+        JSON.stringify({
+          type: "result",
+          data: {
+            answer: "Population data found.",
+            confidence: "high",
+            model: "test/model",
+            result: null,
+            tool_calls: 1,
+            tool_call_details: [toolCall],
+          },
+        }),
+        "",
+      ].join("\n"),
+    }),
+  );
+  await page.goto("/");
+
+  const activity = page.getByRole("button", { name: /Tool calls/ });
+  const historyRow = page.locator(".chat-list-item");
+  const before = {
+    activity: await activity.boundingBox(),
+    history: await historyRow.boundingBox(),
+  };
+  expect(before.activity?.height).toBe(64);
+  await expect(activity).toBeDisabled();
+
+  await page.getByRole("textbox", { name: "Investigation query" }).fill("Find population data");
+  await page.getByRole("button", { name: /Ask/ }).click();
+
+  await expect(activity).toBeEnabled();
+  await expect(activity).toContainText("1 completed");
+  const after = {
+    activity: await activity.boundingBox(),
+    history: await historyRow.boundingBox(),
+  };
+  expect(after.activity?.height).toBe(before.activity?.height);
+  expect(after.history?.y).toBe(before.history?.y);
 });
 
 test("settings opens as a minimal full-page overlay and closes from its top bar", async ({ page }) => {
