@@ -80,6 +80,17 @@ const infoButton = document.querySelector("#info-button");
 const aboutDialog = document.querySelector("#about-dialog");
 const aboutDialogClose = document.querySelector("#about-dialog-close");
 const aboutAppVersion = document.querySelector("#about-app-version");
+const feedbackButton = document.querySelector("#feedback-button");
+const feedbackDialog = document.querySelector("#feedback-dialog");
+const feedbackDialogClose = document.querySelector("#feedback-dialog-close");
+const feedbackForm = document.querySelector("#feedback-form");
+const feedbackCategory = document.querySelector("#feedback-category");
+const feedbackText = document.querySelector("#feedback-text");
+const feedbackEmail = document.querySelector("#feedback-email");
+const feedbackChatLog = document.querySelector("#feedback-chat-log");
+const feedbackStatus = document.querySelector("#feedback-status");
+const feedbackSubmit = document.querySelector("#feedback-submit");
+const feedbackCancel = document.querySelector("#feedback-cancel");
 const developmentPage = document.querySelector("#development-page");
 const settingsCloseButton = document.querySelector("#settings-close");
 const chatViews = document.querySelectorAll("[data-chat-view]");
@@ -665,6 +676,75 @@ function downloadCurrentChatLog() {
   window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
 }
 
+function openFeedbackDialog() {
+  closeSidebar();
+  if (feedbackStatus.dataset.state === "success") {
+    feedbackStatus.hidden = true;
+    feedbackStatus.textContent = "";
+    delete feedbackStatus.dataset.state;
+  }
+  feedbackDialog.showModal();
+  window.setTimeout(() => feedbackCategory.focus(), 0);
+}
+
+function closeFeedbackDialog() {
+  if (!feedbackSubmit.disabled) feedbackDialog.close();
+}
+
+async function submitFeedback(event) {
+  event.preventDefault();
+  if (!feedbackForm.reportValidity()) return;
+
+  feedbackSubmit.disabled = true;
+  feedbackCancel.disabled = true;
+  feedbackDialogClose.disabled = true;
+  feedbackSubmit.textContent = "Sending…";
+  feedbackStatus.hidden = true;
+  feedbackStatus.textContent = "";
+  delete feedbackStatus.dataset.state;
+
+  const rating = feedbackForm.elements.rating.value;
+  const payload = {
+    category: feedbackCategory.value,
+    feedback: feedbackText.value,
+    rating: Number(rating),
+  };
+  if (feedbackEmail.value.trim()) payload.email = feedbackEmail.value.trim();
+  if (feedbackChatLog.checked) {
+    payload.chat_log = buildChatLog(activeChat(), {
+      exportedAt: new Date().toISOString(),
+      appVersion: APP_VERSION,
+    });
+  }
+
+  try {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || "Feedback could not be saved. Try again.");
+    }
+    feedbackForm.reset();
+    feedbackStatus.textContent = "Thanks. Your feedback was sent.";
+    feedbackStatus.dataset.state = "success";
+    feedbackStatus.hidden = false;
+    feedbackSubmit.textContent = "Send feedback";
+  } catch (error) {
+    feedbackStatus.textContent =
+      error instanceof Error ? error.message : "Feedback could not be saved. Try again.";
+    feedbackStatus.dataset.state = "error";
+    feedbackStatus.hidden = false;
+    feedbackSubmit.textContent = "Retry";
+  } finally {
+    feedbackSubmit.disabled = false;
+    feedbackCancel.disabled = false;
+    feedbackDialogClose.disabled = false;
+  }
+}
+
 function addQuestion(content) {
   const article = element("article", "question", content);
   chat.appendChild(article);
@@ -1108,6 +1188,14 @@ aboutDialogClose.addEventListener("click", () => aboutDialog.close());
 aboutDialog.addEventListener("click", (event) => {
   if (event.target === aboutDialog) aboutDialog.close();
 });
+feedbackButton.addEventListener("click", openFeedbackDialog);
+feedbackDialogClose.addEventListener("click", closeFeedbackDialog);
+feedbackCancel.addEventListener("click", closeFeedbackDialog);
+feedbackForm.addEventListener("submit", submitFeedback);
+feedbackDialog.addEventListener("click", (event) => {
+  if (event.target === feedbackDialog) closeFeedbackDialog();
+});
+feedbackDialog.addEventListener("close", () => feedbackButton.focus());
 settingsCloseButton.addEventListener("click", () => {
   showChatPage();
   developmentLink.focus();
