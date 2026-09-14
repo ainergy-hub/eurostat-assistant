@@ -474,6 +474,32 @@
         </button>
       </div>
       <form class="feedback-form" id="feedback-form">
+        <fieldset class="feedback-rating">
+          <legend>How useful do you find the app?</legend>
+          <div class="rating-options">
+            <label>
+              <input type="radio" name="rating" value="1" aria-label="1 star" required />
+              <span class="rating-star" aria-hidden="true"></span>
+            </label>
+            <label>
+              <input type="radio" name="rating" value="2" aria-label="2 stars" />
+              <span class="rating-star" aria-hidden="true"></span>
+            </label>
+            <label>
+              <input type="radio" name="rating" value="3" aria-label="3 stars" />
+              <span class="rating-star" aria-hidden="true"></span>
+            </label>
+            <label>
+              <input type="radio" name="rating" value="4" aria-label="4 stars" />
+              <span class="rating-star" aria-hidden="true"></span>
+            </label>
+            <label>
+              <input type="radio" name="rating" value="5" aria-label="5 stars" />
+              <span class="rating-star" aria-hidden="true"></span>
+            </label>
+          </div>
+        </fieldset>
+
         <label class="feedback-field" for="feedback-category">
           <span>Category</span>
           <select id="feedback-category" name="category" required>
@@ -501,25 +527,12 @@
             autocomplete="email"
             maxlength="254"
           />
-          <small>Include your email only if you want a reply.</small>
         </label>
-
-        <fieldset class="feedback-rating">
-          <legend>Rating</legend>
-          <div class="rating-options">
-            <label><input type="radio" name="rating" value="1" required /> 1</label>
-            <label><input type="radio" name="rating" value="2" /> 2</label>
-            <label><input type="radio" name="rating" value="3" /> 3</label>
-            <label><input type="radio" name="rating" value="4" /> 4</label>
-            <label><input type="radio" name="rating" value="5" /> 5</label>
-          </div>
-          <small>1 is poor. 5 is excellent.</small>
-        </fieldset>
 
         <label class="feedback-chat-log" for="feedback-chat-log">
           <input id="feedback-chat-log" name="includeChatLog" type="checkbox" />
           <span>
-            Include this chat log
+            Include <em>current</em> active chat log
             <small>
               This shares the downloadable JSON log with the maintainers. It may contain chat text
               and diagnostic context.

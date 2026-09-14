@@ -684,7 +684,7 @@ function openFeedbackDialog() {
     delete feedbackStatus.dataset.state;
   }
   feedbackDialog.showModal();
-  window.setTimeout(() => feedbackCategory.focus(), 0);
+  window.setTimeout(() => feedbackForm.querySelector('input[name="rating"]').focus(), 0);
 }
 
 function closeFeedbackDialog() {

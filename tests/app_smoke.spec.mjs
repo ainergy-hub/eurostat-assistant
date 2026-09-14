@@ -199,8 +199,9 @@ test("feedback opens, closes, validates, and sends no chat log by default", asyn
   await openButton.click();
   const dialog = page.getByRole("dialog", { name: "Send feedback" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel("Category")).toBeFocused();
-  await expect(dialog.getByLabel("Include this chat log")).not.toBeChecked();
+  await expect(dialog.getByLabel("1 star", { exact: true })).toBeFocused();
+  await expect(dialog.getByRole("group", { name: "How useful do you find the app?" })).toBeVisible();
+  await expect(dialog.getByLabel("Include current active chat log")).not.toBeChecked();
 
   await dialog.getByRole("button", { name: "Send feedback" }).click();
   expect(submittedPayload).toBeNull();
@@ -208,7 +209,7 @@ test("feedback opens, closes, validates, and sends no chat log by default", asyn
   await dialog.getByLabel("Category").selectOption("Bug report");
   await dialog.getByRole("textbox", { name: /Feedback/ }).fill("The chart labels overlap.");
   await dialog.getByRole("textbox", { name: /Email/ }).fill("reader@example.eu");
-  await dialog.getByLabel("2", { exact: true }).check();
+  await dialog.getByLabel("2 stars", { exact: true }).check();
   await dialog.getByRole("button", { name: "Send feedback" }).click();
 
   await expect(dialog.getByText("Thanks. Your feedback was sent.")).toBeVisible();
@@ -248,8 +249,8 @@ test("failed feedback keeps every value and retries", async ({ page }) => {
   await dialog.getByLabel("Category").selectOption("Feature request");
   await dialog.getByRole("textbox", { name: /Feedback/ }).fill("Add a CSV export.");
   await dialog.getByRole("textbox", { name: /Email/ }).fill("maintainer@example.eu");
-  await dialog.getByLabel("4", { exact: true }).check();
-  await dialog.getByLabel("Include this chat log").check();
+  await dialog.getByLabel("4 stars", { exact: true }).check();
+  await dialog.getByLabel("Include current active chat log").check();
 
   await dialog.getByRole("button", { name: "Send feedback" }).click();
   await expect(dialog.getByText("Feedback could not be saved. Try again.")).toBeVisible();
@@ -258,8 +259,8 @@ test("failed feedback keeps every value and retries", async ({ page }) => {
   await expect(dialog.getByRole("textbox", { name: /Email/ })).toHaveValue(
     "maintainer@example.eu",
   );
-  await expect(dialog.getByLabel("4", { exact: true })).toBeChecked();
-  await expect(dialog.getByLabel("Include this chat log")).toBeChecked();
+  await expect(dialog.getByLabel("4 stars", { exact: true })).toBeChecked();
+  await expect(dialog.getByLabel("Include current active chat log")).toBeChecked();
 
   await dialog.getByRole("button", { name: "Retry" }).click();
   await expect(dialog.getByText("Thanks. Your feedback was sent.")).toBeVisible();
@@ -330,8 +331,8 @@ test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "Send feedback" });
   await dialog.getByLabel("Category").selectOption("Response quality");
   await dialog.getByRole("textbox", { name: /Feedback/ }).fill("The answer needs more context.");
-  await dialog.getByLabel("3", { exact: true }).check();
-  await dialog.getByLabel("Include this chat log").check();
+  await dialog.getByLabel("3 stars", { exact: true }).check();
+  await dialog.getByLabel("Include current active chat log").check();
   await dialog.getByRole("button", { name: "Send feedback" }).click();
 
   expect(submittedPayload.chat_log).toEqual(downloadedLog);

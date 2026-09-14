@@ -2554,27 +2554,63 @@ footer a:hover {
 }
 
 .rating-options {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-2);
+  display: flex;
+  width: fit-content;
 }
 
 .rating-options label {
-  min-height: 42px;
+  --rating-glyph: "☆";
+  position: relative;
+  width: 52px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  border: var(--border-hairline);
   border-radius: var(--radius-control);
-  background: var(--color-surface);
+  color: var(--color-text-faint);
   cursor: pointer;
 }
 
-.rating-options label:has(input:checked) {
-  border-color: var(--color-accent);
-  background: var(--color-accent-soft);
-  color: var(--color-accent-dim);
+.rating-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.rating-star {
+  font-family: Arial, sans-serif;
+  font-size: 2.5rem;
+  line-height: 1;
+  pointer-events: none;
+  transition: color 120ms ease, transform 120ms ease;
+}
+
+.rating-star::before {
+  content: var(--rating-glyph);
+}
+
+.rating-options label:hover .rating-star {
+  transform: scale(1.12);
+}
+
+.rating-options label:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.rating-options:has(label:nth-child(1):hover) label:nth-child(-n + 1),
+.rating-options:has(label:nth-child(2):hover) label:nth-child(-n + 2),
+.rating-options:has(label:nth-child(3):hover) label:nth-child(-n + 3),
+.rating-options:has(label:nth-child(4):hover) label:nth-child(-n + 4),
+.rating-options:has(label:nth-child(5):hover) label:nth-child(-n + 5),
+.rating-options:has(input[value="1"]:checked) label:nth-child(-n + 1),
+.rating-options:has(input[value="2"]:checked) label:nth-child(-n + 2),
+.rating-options:has(input[value="3"]:checked) label:nth-child(-n + 3),
+.rating-options:has(input[value="4"]:checked) label:nth-child(-n + 4),
+.rating-options:has(input[value="5"]:checked) label:nth-child(-n + 5) {
+  --rating-glyph: "★";
+  color: var(--color-accent);
 }
 
 .feedback-chat-log {
