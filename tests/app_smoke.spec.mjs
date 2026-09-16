@@ -202,6 +202,7 @@ test("feedback opens, closes, validates, and sends no chat log by default", asyn
   await expect(dialog.getByLabel("1 star", { exact: true })).toBeFocused();
   await expect(dialog.getByRole("group", { name: "How useful do you find the app?" })).toBeVisible();
   await expect(dialog.getByLabel("Include current active chat log")).not.toBeChecked();
+  await expect(dialog.getByText("Chat: New investigation", { exact: true })).toBeVisible();
 
   await dialog.getByRole("button", { name: "Send feedback" }).click();
   expect(submittedPayload).toBeNull();
@@ -318,6 +319,7 @@ test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
   await page.getByRole("textbox", { name: "Investigation query" }).fill("Find population data");
   await page.getByRole("button", { name: /Ask/ }).click();
   await expect(page.getByText("Population data found.")).toBeVisible();
+  await expect(page.locator("#current-chat-title")).toHaveText("Population lookup");
 
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: /Download log/ }).click();
@@ -333,6 +335,7 @@ test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
   await dialog.getByRole("textbox", { name: /Feedback/ }).fill("The answer needs more context.");
   await dialog.getByLabel("3 stars", { exact: true }).check();
   await dialog.getByLabel("Include current active chat log").check();
+  await expect(dialog.getByText("Chat: Population lookup", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Send feedback" }).click();
 
   expect(submittedPayload.chat_log).toEqual(downloadedLog);

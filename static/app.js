@@ -88,6 +88,7 @@ const feedbackCategory = document.querySelector("#feedback-category");
 const feedbackText = document.querySelector("#feedback-text");
 const feedbackEmail = document.querySelector("#feedback-email");
 const feedbackChatLog = document.querySelector("#feedback-chat-log");
+const feedbackChatLogName = document.querySelector("#feedback-chat-log-name");
 const feedbackStatus = document.querySelector("#feedback-status");
 const feedbackSubmit = document.querySelector("#feedback-submit");
 const feedbackCancel = document.querySelector("#feedback-cancel");
@@ -678,6 +679,7 @@ function downloadCurrentChatLog() {
 
 function openFeedbackDialog() {
   closeSidebar();
+  updateFeedbackChatLogName();
   if (feedbackStatus.dataset.state === "success") {
     feedbackStatus.hidden = true;
     feedbackStatus.textContent = "";
@@ -685,6 +687,10 @@ function openFeedbackDialog() {
   }
   feedbackDialog.showModal();
   window.setTimeout(() => feedbackForm.querySelector('input[name="rating"]').focus(), 0);
+}
+
+function updateFeedbackChatLogName() {
+  feedbackChatLogName.textContent = `Chat: ${activeChat()?.title || "New investigation"}`;
 }
 
 function closeFeedbackDialog() {
@@ -1191,6 +1197,7 @@ aboutDialog.addEventListener("click", (event) => {
 feedbackButton.addEventListener("click", openFeedbackDialog);
 feedbackDialogClose.addEventListener("click", closeFeedbackDialog);
 feedbackCancel.addEventListener("click", closeFeedbackDialog);
+feedbackChatLog.addEventListener("change", updateFeedbackChatLogName);
 feedbackForm.addEventListener("submit", submitFeedback);
 feedbackDialog.addEventListener("click", (event) => {
   if (event.target === feedbackDialog) closeFeedbackDialog();
