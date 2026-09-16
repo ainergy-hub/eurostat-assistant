@@ -102,6 +102,7 @@ class FeedbackApiTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "chat_log_attached": True})
         self.assertEqual(urlopen_mock.call_count, 2)
         record_request = urlopen_mock.call_args_list[0].args[0]
         self.assertEqual(
@@ -118,6 +119,39 @@ class FeedbackApiTests(unittest.TestCase):
         self.assertEqual(attachment["contentType"], "application/json")
         self.assertEqual(attachment["filename"], "eurostat-assistant-chat-log.json")
         self.assertEqual(json.loads(base64.b64decode(attachment["file"])), chat_log)
+
+    @patch("app.main.urlopen")
+    def test_reports_partial_success_when_the_attachment_upload_fails(self, urlopen_mock) -> None:
+        urlopen_mock.side_effect = [
+            AirtableResponse({"id": "recFeedback"}),
+            HTTPError(
+                "https://content.airtable.com/v0/appTestBase/recFeedback/attachment/uploadAttachment",
+                500,
+                "attachment upload failed",
+                {},
+                None,
+            ),
+        ]
+
+        with self.assertLogs("app.main", level="WARNING"):
+            response = self.client.post(
+                "/api/feedback",
+                json={
+                    "category": "Response quality",
+                    "feedback": "The answer used the wrong year.",
+                    "rating": 1,
+                    "chat_log": {
+                        "schemaVersion": 2,
+                        "app": {"name": "Eurostat Assistant"},
+                        "exportedAt": "2026-09-13T12:00:00.000Z",
+                        "investigation": {"id": "chat-1", "messages": []},
+                    },
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "chat_log_attached": False})
+        self.assertEqual(urlopen_mock.call_count, 2)
 
     def test_rejects_invalid_values_before_contacting_airtable(self) -> None:
         cases = [
@@ -157,10 +191,12 @@ class FeedbackApiTests(unittest.TestCase):
                     "rating": 4,
                 },
             )
+            status = self.client.get("/api/auth/status")
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json(), {"detail": "Feedback storage is not configured."})
         self.assertNotIn("AIRTABLE", response.text)
+        self.assertFalse(status.json()["feedback_configured"])
 
     @patch("app.main.urlopen")
     def test_hides_airtable_error_details_and_credentials(self, urlopen_mock) -> None:

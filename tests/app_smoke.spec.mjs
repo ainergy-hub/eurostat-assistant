@@ -68,6 +68,38 @@ test("the assembled application starts without browser errors", async ({ page })
   expect(browserErrors).toEqual([]);
 });
 
+test("feedback remains available during a rolling backend update", async ({ page }) => {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ lock_enabled: false, authenticated: true }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: "Send feedback" })).toBeVisible();
+});
+
+test("feedback stays hidden when Airtable is not configured", async ({ page }) => {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        lock_enabled: false,
+        authenticated: true,
+        feedback_configured: false,
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.locator("#feedback-button")).toBeHidden();
+});
+
 test("tool activity stays in place while its state changes", async ({ page }) => {
   const toolCall = {
     id: "call-1",
@@ -312,7 +344,7 @@ test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ ok: true }),
+      body: JSON.stringify({ ok: true, chat_log_attached: false }),
     });
   });
   await page.goto("/");
@@ -338,6 +370,9 @@ test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
   await expect(dialog.getByText("Chat: Population lookup", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Send feedback" }).click();
 
+  await expect(
+    dialog.getByText("Your feedback was sent, but the chat log could not be attached."),
+  ).toBeVisible();
   expect(submittedPayload.chat_log).toEqual(downloadedLog);
 });
 

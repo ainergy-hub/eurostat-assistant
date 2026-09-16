@@ -762,6 +762,10 @@ th {
   color: var(--color-accent-dim);
 }
 
+.feedback-button[hidden] {
+  display: none;
+}
+
 .local-icon {
   color: var(--color-warning);
   font-size: 1.15rem;

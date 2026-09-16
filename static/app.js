@@ -107,6 +107,10 @@ let lockEnabled = false;
 let notificationTimer = null;
 let pendingRetryContext = null;
 
+function setFeedbackAvailability(configured) {
+  feedbackButton.hidden = !configured;
+}
+
 function syncThemeToggle() {
   const isDark = document.documentElement.dataset.theme === themeApi.DARK;
   const nextTheme = isDark ? "light" : "dark";
@@ -142,6 +146,7 @@ async function checkAuth() {
     if (!response.ok) throw new Error("The app could not check the lock status.");
     const data = await response.json();
     lockEnabled = Boolean(data.lock_enabled);
+    setFeedbackAvailability(data.feedback_configured !== false);
     if (!data.authenticated) {
       showAppLock();
       return false;
@@ -729,12 +734,15 @@ async function submitFeedback(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.detail || "Feedback could not be saved. Try again.");
+      throw new Error(result.detail || "Feedback could not be saved. Try again.");
     }
     feedbackForm.reset();
-    feedbackStatus.textContent = "Thanks. Your feedback was sent.";
+    feedbackStatus.textContent =
+      result.chat_log_attached === false
+        ? "Your feedback was sent, but the chat log could not be attached."
+        : "Thanks. Your feedback was sent.";
     feedbackStatus.dataset.state = "success";
     feedbackStatus.hidden = false;
     feedbackSubmit.textContent = "Send feedback";
@@ -977,6 +985,7 @@ appLockForm.addEventListener("submit", async (event) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || "The app could not be unlocked.");
     lockEnabled = Boolean(data.lock_enabled);
+    setFeedbackAvailability(data.feedback_configured !== false);
     showApp();
     await loadDevelopmentSettings();
     renderWorkspace();

@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import base64
 import json
+import logging
 import os
 import queue
 import re
@@ -56,10 +57,24 @@ FEEDBACK_CATEGORIES = (
 MAX_FEEDBACK_CHARACTERS = 5_000
 MAX_CHAT_LOG_BYTES = 1_000_000
 AIRTABLE_ATTACHMENT_FIELD = "Chat log attachment"
+AIRTABLE_ENVIRONMENT_VARIABLES = (
+    "AIRTABLE_ACCESS_TOKEN",
+    "AIRTABLE_BASE_ID",
+    "AIRTABLE_TABLE_ID",
+)
+logger = logging.getLogger(__name__)
 
 
 def _app_password() -> str:
     return os.getenv("APP_PASSWORD", "")
+
+
+def _airtable_values() -> tuple[str, str, str]:
+    return tuple(os.getenv(name, "").strip() for name in AIRTABLE_ENVIRONMENT_VARIABLES)
+
+
+def _feedback_is_configured() -> bool:
+    return all(_airtable_values())
 
 
 def _session_token(password: str, expires_at: int) -> str:
@@ -338,6 +353,7 @@ def auth_status(request: Request) -> dict[str, bool]:
     return {
         "lock_enabled": lock_enabled,
         "authenticated": not lock_enabled or _request_is_unlocked(request),
+        "feedback_configured": _feedback_is_configured(),
     }
 
 
@@ -345,7 +361,13 @@ def auth_status(request: Request) -> dict[str, bool]:
 def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
     password = _app_password()
     if not password:
-        return JSONResponse({"authenticated": True, "lock_enabled": False})
+        return JSONResponse(
+            {
+                "authenticated": True,
+                "lock_enabled": False,
+                "feedback_configured": _feedback_is_configured(),
+            }
+        )
     if not hmac.compare_digest(credentials.password.encode("utf-8"), password.encode("utf-8")):
         return JSONResponse(
             status_code=401,
@@ -354,7 +376,13 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
         )
 
     expires_at = int(time.time()) + SESSION_TTL_SECONDS
-    response = JSONResponse({"authenticated": True, "lock_enabled": True})
+    response = JSONResponse(
+        {
+            "authenticated": True,
+            "lock_enabled": True,
+            "feedback_configured": _feedback_is_configured(),
+        }
+    )
     response.set_cookie(
         key=SESSION_COOKIE,
         value=_session_token(password, expires_at),
@@ -370,7 +398,13 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
 
 @app.post("/api/auth/lock")
 def lock() -> JSONResponse:
-    response = JSONResponse({"authenticated": False, "lock_enabled": bool(_app_password())})
+    response = JSONResponse(
+        {
+            "authenticated": False,
+            "lock_enabled": bool(_app_password()),
+            "feedback_configured": _feedback_is_configured(),
+        }
+    )
     response.delete_cookie(SESSION_COOKIE, path="/", samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -393,10 +427,7 @@ class FeedbackServiceError(RuntimeError):
 
 
 def _airtable_configuration() -> tuple[str, str, str]:
-    values = tuple(
-        os.getenv(name, "").strip()
-        for name in ("AIRTABLE_ACCESS_TOKEN", "AIRTABLE_BASE_ID", "AIRTABLE_TABLE_ID")
-    )
+    values = _airtable_values()
     if not all(values):
         raise FeedbackConfigurationError("Feedback storage is not configured.")
     return values
@@ -427,7 +458,7 @@ def _post_airtable_json(url: str, token: str, payload: dict[str, Any]) -> dict[s
     return result
 
 
-def _create_feedback_record(feedback: FeedbackRequest) -> None:
+def _create_feedback_record(feedback: FeedbackRequest) -> bool | None:
     token, base_id, table_id = _airtable_configuration()
     record_url = (
         f"https://api.airtable.com/v0/{quote(base_id, safe='')}/{quote(table_id, safe='')}"
@@ -450,7 +481,7 @@ def _create_feedback_record(feedback: FeedbackRequest) -> None:
         raise FeedbackServiceError("Airtable did not return a record ID.")
 
     if feedback.chat_log is None:
-        return
+        return None
 
     log_bytes = json.dumps(feedback.chat_log, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
     attachment_url = (
@@ -458,21 +489,26 @@ def _create_feedback_record(feedback: FeedbackRequest) -> None:
         f"{quote(base_id, safe='')}/{quote(record_id, safe='')}/"
         f"{quote(AIRTABLE_ATTACHMENT_FIELD, safe='')}/uploadAttachment"
     )
-    _post_airtable_json(
-        attachment_url,
-        token,
-        {
-            "contentType": "application/json",
-            "file": base64.b64encode(log_bytes).decode("ascii"),
-            "filename": "eurostat-assistant-chat-log.json",
-        },
-    )
+    try:
+        _post_airtable_json(
+            attachment_url,
+            token,
+            {
+                "contentType": "application/json",
+                "file": base64.b64encode(log_bytes).decode("ascii"),
+                "filename": "eurostat-assistant-chat-log.json",
+            },
+        )
+    except FeedbackServiceError:
+        logger.warning("Feedback was saved, but its chat log attachment could not be uploaded.")
+        return False
+    return True
 
 
 @app.post("/api/feedback")
 async def submit_feedback(feedback: FeedbackRequest) -> dict[str, bool]:
     try:
-        await anyio.to_thread.run_sync(_create_feedback_record, feedback)
+        chat_log_attached = await anyio.to_thread.run_sync(_create_feedback_record, feedback)
     except FeedbackConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except FeedbackServiceError as exc:
@@ -480,7 +516,10 @@ async def submit_feedback(feedback: FeedbackRequest) -> dict[str, bool]:
             status_code=502,
             detail="Feedback could not be saved. Try again.",
         ) from exc
-    return {"ok": True}
+    response = {"ok": True}
+    if chat_log_attached is not None:
+        response["chat_log_attached"] = chat_log_attached
+    return response
 
 
 @app.get("/api/settings/development")

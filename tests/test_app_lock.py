@@ -16,6 +16,9 @@ class AppLockTests(unittest.TestCase):
             {
                 "APP_PASSWORD": "test-app-password",
                 "OPENROUTER_MODEL_OPTIONS": "test/default-model,test/alternate-model",
+                "AIRTABLE_ACCESS_TOKEN": "test-airtable-token",
+                "AIRTABLE_BASE_ID": "appTestBase",
+                "AIRTABLE_TABLE_ID": "tblTestTable",
             },
         )
         self.password_patch.start()
@@ -30,7 +33,11 @@ class AppLockTests(unittest.TestCase):
 
         self.assertEqual(
             status.json(),
-            {"lock_enabled": True, "authenticated": False},
+            {
+                "lock_enabled": True,
+                "authenticated": False,
+                "feedback_configured": True,
+            },
         )
         self.assertEqual(
             self.client.post("/api/chat", json={"message": "hello"}).status_code,
