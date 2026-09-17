@@ -695,7 +695,7 @@ function openFeedbackDialog() {
 }
 
 function updateFeedbackChatLogName() {
-  feedbackChatLogName.textContent = `Chat: ${activeChat()?.title || "New investigation"}`;
+  feedbackChatLogName.textContent = activeChat()?.title || "New investigation";
 }
 
 function closeFeedbackDialog() {

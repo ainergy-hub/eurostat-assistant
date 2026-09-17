@@ -233,8 +233,8 @@ test("feedback opens, closes, validates, and sends no chat log by default", asyn
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("1 star", { exact: true })).toBeFocused();
   await expect(dialog.getByRole("group", { name: "How useful do you find the app?" })).toBeVisible();
-  await expect(dialog.getByLabel("Include current active chat log")).not.toBeChecked();
-  await expect(dialog.getByText("Chat: New investigation", { exact: true })).toBeVisible();
+  await expect(dialog.locator("#feedback-chat-log")).not.toBeChecked();
+  await expect(dialog.getByText("New investigation", { exact: true })).toBeVisible();
 
   await dialog.getByRole("button", { name: "Send feedback" }).click();
   expect(submittedPayload).toBeNull();
@@ -283,7 +283,7 @@ test("failed feedback keeps every value and retries", async ({ page }) => {
   await dialog.getByRole("textbox", { name: /Feedback/ }).fill("Add a CSV export.");
   await dialog.getByRole("textbox", { name: /Email/ }).fill("maintainer@example.eu");
   await dialog.getByLabel("4 stars", { exact: true }).check();
-  await dialog.getByLabel("Include current active chat log").check();
+  await dialog.locator("#feedback-chat-log").check();
 
   await dialog.getByRole("button", { name: "Send feedback" }).click();
   await expect(dialog.getByText("Feedback could not be saved. Try again.")).toBeVisible();
@@ -293,7 +293,7 @@ test("failed feedback keeps every value and retries", async ({ page }) => {
     "maintainer@example.eu",
   );
   await expect(dialog.getByLabel("4 stars", { exact: true })).toBeChecked();
-  await expect(dialog.getByLabel("Include current active chat log")).toBeChecked();
+  await expect(dialog.locator("#feedback-chat-log")).toBeChecked();
 
   await dialog.getByRole("button", { name: "Retry" }).click();
   await expect(dialog.getByText("Thanks. Your feedback was sent.")).toBeVisible();
@@ -366,8 +366,8 @@ test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
   await dialog.getByLabel("Category").selectOption("Response quality");
   await dialog.getByRole("textbox", { name: /Feedback/ }).fill("The answer needs more context.");
   await dialog.getByLabel("3 stars", { exact: true }).check();
-  await dialog.getByLabel("Include current active chat log").check();
-  await expect(dialog.getByText("Chat: Population lookup", { exact: true })).toBeVisible();
+  await dialog.locator("#feedback-chat-log").check();
+  await expect(dialog.getByText("Population lookup", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Send feedback" }).click();
 
   await expect(

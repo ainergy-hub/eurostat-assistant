@@ -2632,13 +2632,11 @@ footer a:hover {
 }
 
 .feedback-chat-log span,
-.feedback-chat-log-name,
 .feedback-chat-log small {
   display: block;
 }
 
 .feedback-chat-log-name {
-  margin-top: var(--space-1);
   color: var(--color-text-primary);
   overflow-wrap: anywhere;
 }
