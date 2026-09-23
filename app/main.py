@@ -262,6 +262,13 @@ class UnlockRequest(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
+def _chat_log_bytes(chat_log: dict[str, Any]) -> bytes:
+    return (
+        json.dumps(chat_log, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")
+        + b"\n"
+    )
+
+
 class FeedbackRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -302,14 +309,14 @@ class FeedbackRequest(BaseModel):
         if value is None:
             return None
         if not (
-            isinstance(value.get("schemaVersion"), int)
+            type(value.get("schemaVersion")) is int
             and isinstance(value.get("app"), dict)
             and isinstance(value.get("exportedAt"), str)
             and isinstance(value.get("investigation"), dict)
         ):
             raise ValueError("Chat log does not match the downloadable log schema.")
         try:
-            encoded = json.dumps(value, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            encoded = _chat_log_bytes(value)
         except (TypeError, ValueError) as exc:
             raise ValueError("Chat log must be valid JSON.") from exc
         if len(encoded) > MAX_CHAT_LOG_BYTES:
@@ -483,7 +490,7 @@ def _create_feedback_record(feedback: FeedbackRequest) -> bool | None:
     if feedback.chat_log is None:
         return None
 
-    log_bytes = json.dumps(feedback.chat_log, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+    log_bytes = _chat_log_bytes(feedback.chat_log)
     attachment_url = (
         "https://content.airtable.com/v0/"
         f"{quote(base_id, safe='')}/{quote(record_id, safe='')}/"

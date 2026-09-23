@@ -704,6 +704,8 @@ function closeFeedbackDialog() {
 
 async function submitFeedback(event) {
   event.preventDefault();
+  const feedback = feedbackText.value.trim();
+  feedbackText.setCustomValidity(feedback ? "" : "Feedback must contain text.");
   if (!feedbackForm.reportValidity()) return;
 
   feedbackSubmit.disabled = true;
@@ -717,7 +719,7 @@ async function submitFeedback(event) {
   const rating = feedbackForm.elements.rating.value;
   const payload = {
     category: feedbackCategory.value,
-    feedback: feedbackText.value,
+    feedback,
     rating: Number(rating),
   };
   if (feedbackEmail.value.trim()) payload.email = feedbackEmail.value.trim();
@@ -736,7 +738,11 @@ async function submitFeedback(event) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(result.detail || "Feedback could not be saved. Try again.");
+      throw new Error(
+        typeof result.detail === "string"
+          ? result.detail
+          : "Feedback could not be saved. Try again.",
+      );
     }
     feedbackForm.reset();
     feedbackStatus.textContent =
@@ -1211,7 +1217,12 @@ feedbackForm.addEventListener("submit", submitFeedback);
 feedbackDialog.addEventListener("click", (event) => {
   if (event.target === feedbackDialog) closeFeedbackDialog();
 });
-feedbackDialog.addEventListener("close", () => feedbackButton.focus());
+feedbackDialog.addEventListener("close", () => {
+  // On narrow screens the sidebar holding the feedback button is off-screen.
+  const menuVisible = getComputedStyle(menuButton).display !== "none";
+  (menuVisible ? menuButton : feedbackButton).focus();
+});
+feedbackText.addEventListener("input", () => feedbackText.setCustomValidity(""));
 settingsCloseButton.addEventListener("click", () => {
   showChatPage();
   developmentLink.focus();

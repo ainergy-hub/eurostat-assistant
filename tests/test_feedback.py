@@ -172,6 +172,17 @@ class FeedbackApiTests(unittest.TestCase):
                 "rating": 3,
                 "chat_log": {"messages": []},
             },
+            {
+                "category": "General feedback",
+                "feedback": "Hello",
+                "rating": 3,
+                "chat_log": {
+                    "schemaVersion": True,
+                    "app": {},
+                    "exportedAt": "2026-09-23T00:00:00Z",
+                    "investigation": {},
+                },
+            },
         ]
 
         with patch("app.main.urlopen") as urlopen_mock:
