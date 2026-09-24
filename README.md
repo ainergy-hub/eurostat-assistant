@@ -120,6 +120,9 @@ OPENROUTER_MODEL_OPTIONS=provider/default-model,provider/optional-model
 OPENROUTER_TITLE_MODEL=openai/gpt-5.4-nano
 APP_PASSWORD=choose-a-strong-password
 LOCAL_AGENT_CONCURRENCY=2
+AIRTABLE_ACCESS_TOKEN=your_airtable_personal_access_token
+AIRTABLE_BASE_ID=app_your_base_id
+AIRTABLE_TABLE_ID=tbl_your_table_id
 ```
 
 `OPENROUTER_MODEL_OPTIONS` is the source of truth for the main chat models. It is required,
@@ -132,6 +135,29 @@ session cookie after a successful unlock. Sessions last 12 hours or until **Lock
 Leave `APP_PASSWORD` unset only when the app is running in an already trusted environment.
 `LOCAL_AGENT_CONCURRENCY` optionally controls the maximum number of agent child processes. It
 defaults to `2`; additional requests wait for an available slot.
+
+The three `AIRTABLE_*` variables enable the in-app feedback form. Create a table with these fields:
+
+- `Category`: single select or single-line text;
+- `Feedback`: long text;
+- `Rating`: number;
+- `email`: email or single-line text;
+- `Chat log attachment`: attachment;
+- `Created at`: created-time field.
+
+Set up Airtable with a Personal Access Token. Legacy API keys no longer work with Airtable's API.
+
+1. Open [Airtable Personal Access Tokens](https://airtable.com/create/tokens) and create a token.
+2. Add only the `data.records:write` scope.
+3. Under **Access**, add the feedback base as the token's only resource.
+4. Copy the base ID and table ID from the table URL. The base ID starts with `app`; the table ID
+   starts with `tbl`.
+5. Set the token, base ID, and table ID as `AIRTABLE_ACCESS_TOKEN`, `AIRTABLE_BASE_ID`, and
+   `AIRTABLE_TABLE_ID`.
+
+The Airtable account that owns the token must have permission to create records and write to every
+configured field. Keep the field names and capitalization shown above. Chat logs are sent only when
+the user selects the opt-in checkbox. The browser never receives the Airtable token.
 
 Start the app:
 
@@ -158,6 +184,9 @@ promoting a deployment.
    OPENROUTER_TITLE_MODEL=openai/gpt-5.4-nano
    APP_PASSWORD=choose-a-strong-password
    LOCAL_AGENT_CONCURRENCY=2
+   AIRTABLE_ACCESS_TOKEN=your_airtable_personal_access_token
+   AIRTABLE_BASE_ID=app_your_base_id
+   AIRTABLE_TABLE_ID=tbl_your_table_id
    ```
 
 3. Generate a public domain from the service's **Settings → Networking** page.
@@ -230,6 +259,8 @@ and app version.
 - `GET /api/auth/status`: app-lock status.
 - `POST /api/auth/unlock`: unlock the app with `APP_PASSWORD`.
 - `POST /api/auth/lock`: clear the current app session.
+- `POST /api/feedback`: validate feedback, create an Airtable record, and optionally attach the
+  current downloadable chat log.
 - `GET /api/health`: public service and agent-credential readiness probe.
 - `GET /api/settings/development`: enabled models, tools, limits, and runtime metadata.
 - `POST /api/chat`: validated, non-streaming chat response.

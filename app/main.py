@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import base64
 import json
+import logging
 import os
 import queue
 import re
@@ -10,12 +12,15 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Literal
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import Request as UrlRequest, urlopen
 
 import anyio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .agent_config import (
     MAX_ESTIMATED_CELLS,
@@ -42,10 +47,34 @@ SESSION_COOKIE = "eurostat_lens_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
 APP_VERSION = "0.3.0"
 MODEL_ID_PATTERN = re.compile(r"^~?[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+FEEDBACK_CATEGORIES = (
+    "Bug report",
+    "Feature request",
+    "Response quality",
+    "General feedback",
+)
+MAX_FEEDBACK_CHARACTERS = 5_000
+MAX_CHAT_LOG_BYTES = 1_000_000
+AIRTABLE_ATTACHMENT_FIELD = "Chat log attachment"
+AIRTABLE_ENVIRONMENT_VARIABLES = (
+    "AIRTABLE_ACCESS_TOKEN",
+    "AIRTABLE_BASE_ID",
+    "AIRTABLE_TABLE_ID",
+)
+logger = logging.getLogger(__name__)
 
 
 def _app_password() -> str:
     return os.getenv("APP_PASSWORD", "")
+
+
+def _airtable_values() -> tuple[str, str, str]:
+    return tuple(os.getenv(name, "").strip() for name in AIRTABLE_ENVIRONMENT_VARIABLES)
+
+
+def _feedback_is_configured() -> bool:
+    return all(_airtable_values())
 
 
 def _session_token(password: str, expires_at: int) -> str:
@@ -233,6 +262,68 @@ class UnlockRequest(BaseModel):
     password: str = Field(min_length=1, max_length=512)
 
 
+def _chat_log_bytes(chat_log: dict[str, Any]) -> bytes:
+    return (
+        json.dumps(chat_log, ensure_ascii=False, allow_nan=False, indent=2).encode("utf-8")
+        + b"\n"
+    )
+
+
+class FeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: Literal[
+        "Bug report",
+        "Feature request",
+        "Response quality",
+        "General feedback",
+    ]
+    feedback: str = Field(min_length=1, max_length=MAX_FEEDBACK_CHARACTERS)
+    rating: int = Field(ge=1, le=5)
+    email: str | None = Field(default=None, max_length=254)
+    chat_log: dict[str, Any] | None = None
+
+    @field_validator("feedback")
+    @classmethod
+    def feedback_must_contain_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Feedback must contain text.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if not EMAIL_PATTERN.fullmatch(cleaned):
+            raise ValueError("Enter a valid email address.")
+        return cleaned
+
+    @field_validator("chat_log")
+    @classmethod
+    def validate_chat_log(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if not (
+            type(value.get("schemaVersion")) is int
+            and isinstance(value.get("app"), dict)
+            and isinstance(value.get("exportedAt"), str)
+            and isinstance(value.get("investigation"), dict)
+        ):
+            raise ValueError("Chat log does not match the downloadable log schema.")
+        try:
+            encoded = _chat_log_bytes(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Chat log must be valid JSON.") from exc
+        if len(encoded) > MAX_CHAT_LOG_BYTES:
+            raise ValueError("Chat log is too large.")
+        return value
+
+
 class ToolCallDetail(BaseModel):
     id: str
     index: int = Field(ge=1)
@@ -269,6 +360,7 @@ def auth_status(request: Request) -> dict[str, bool]:
     return {
         "lock_enabled": lock_enabled,
         "authenticated": not lock_enabled or _request_is_unlocked(request),
+        "feedback_configured": _feedback_is_configured(),
     }
 
 
@@ -276,7 +368,13 @@ def auth_status(request: Request) -> dict[str, bool]:
 def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
     password = _app_password()
     if not password:
-        return JSONResponse({"authenticated": True, "lock_enabled": False})
+        return JSONResponse(
+            {
+                "authenticated": True,
+                "lock_enabled": False,
+                "feedback_configured": _feedback_is_configured(),
+            }
+        )
     if not hmac.compare_digest(credentials.password.encode("utf-8"), password.encode("utf-8")):
         return JSONResponse(
             status_code=401,
@@ -285,7 +383,13 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
         )
 
     expires_at = int(time.time()) + SESSION_TTL_SECONDS
-    response = JSONResponse({"authenticated": True, "lock_enabled": True})
+    response = JSONResponse(
+        {
+            "authenticated": True,
+            "lock_enabled": True,
+            "feedback_configured": _feedback_is_configured(),
+        }
+    )
     response.set_cookie(
         key=SESSION_COOKIE,
         value=_session_token(password, expires_at),
@@ -301,7 +405,13 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
 
 @app.post("/api/auth/lock")
 def lock() -> JSONResponse:
-    response = JSONResponse({"authenticated": False, "lock_enabled": bool(_app_password())})
+    response = JSONResponse(
+        {
+            "authenticated": False,
+            "lock_enabled": bool(_app_password()),
+            "feedback_configured": _feedback_is_configured(),
+        }
+    )
     response.delete_cookie(SESSION_COOKIE, path="/", samesite="strict")
     response.headers["Cache-Control"] = "no-store"
     return response
@@ -313,6 +423,110 @@ def health() -> dict[str, bool]:
         "ok": True,
         "agent_ready": bool(os.getenv("OPENROUTER_API_KEY")),
     }
+
+
+class FeedbackConfigurationError(RuntimeError):
+    pass
+
+
+class FeedbackServiceError(RuntimeError):
+    pass
+
+
+def _airtable_configuration() -> tuple[str, str, str]:
+    values = _airtable_values()
+    if not all(values):
+        raise FeedbackConfigurationError("Feedback storage is not configured.")
+    return values
+
+
+def _post_airtable_json(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
+    request = UrlRequest(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=15) as response:
+            response_body = response.read()
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise FeedbackServiceError("Airtable did not accept the feedback.") from exc
+
+    try:
+        result = json.loads(response_body)
+    except (TypeError, ValueError) as exc:
+        raise FeedbackServiceError("Airtable returned an invalid response.") from exc
+    if not isinstance(result, dict):
+        raise FeedbackServiceError("Airtable returned an invalid response.")
+    return result
+
+
+def _create_feedback_record(feedback: FeedbackRequest) -> bool | None:
+    token, base_id, table_id = _airtable_configuration()
+    record_url = (
+        f"https://api.airtable.com/v0/{quote(base_id, safe='')}/{quote(table_id, safe='')}"
+    )
+    fields: dict[str, Any] = {
+        "Category": feedback.category,
+        "Feedback": feedback.feedback,
+        "Rating": feedback.rating,
+    }
+    if feedback.email:
+        fields["email"] = feedback.email
+
+    record = _post_airtable_json(
+        record_url,
+        token,
+        {"fields": fields},
+    )
+    record_id = record.get("id")
+    if not isinstance(record_id, str) or not record_id:
+        raise FeedbackServiceError("Airtable did not return a record ID.")
+
+    if feedback.chat_log is None:
+        return None
+
+    log_bytes = _chat_log_bytes(feedback.chat_log)
+    attachment_url = (
+        "https://content.airtable.com/v0/"
+        f"{quote(base_id, safe='')}/{quote(record_id, safe='')}/"
+        f"{quote(AIRTABLE_ATTACHMENT_FIELD, safe='')}/uploadAttachment"
+    )
+    try:
+        _post_airtable_json(
+            attachment_url,
+            token,
+            {
+                "contentType": "application/json",
+                "file": base64.b64encode(log_bytes).decode("ascii"),
+                "filename": "eurostat-assistant-chat-log.json",
+            },
+        )
+    except FeedbackServiceError:
+        logger.warning("Feedback was saved, but its chat log attachment could not be uploaded.")
+        return False
+    return True
+
+
+@app.post("/api/feedback")
+async def submit_feedback(feedback: FeedbackRequest) -> dict[str, bool]:
+    try:
+        chat_log_attached = await anyio.to_thread.run_sync(_create_feedback_record, feedback)
+    except FeedbackConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except FeedbackServiceError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Feedback could not be saved. Try again.",
+        ) from exc
+    response = {"ok": True}
+    if chat_log_attached is not None:
+        response["chat_log_attached"] = chat_log_attached
+    return response
 
 
 @app.get("/api/settings/development")

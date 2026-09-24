@@ -61,11 +61,43 @@ test("the assembled application starts without browser errors", async ({ page })
     };
   });
   expect(sidebarFooterLayout.bottomGap).toBe(16);
-  expect(sidebarFooterLayout.height).toBeLessThan(60);
+  expect(sidebarFooterLayout.height).toBeLessThan(100);
   expect(await page.locator(".chat-select").getAttribute("title")).toBeNull();
   await expect(page.locator(".chat-select-copy small")).toHaveCount(0);
   await expect(page.getByText("Agent ready", { exact: true })).toHaveCount(0);
   expect(browserErrors).toEqual([]);
+});
+
+test("feedback remains available during a rolling backend update", async ({ page }) => {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ lock_enabled: false, authenticated: true }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.getByRole("button", { name: "Send feedback" })).toBeVisible();
+});
+
+test("feedback stays hidden when Airtable is not configured", async ({ page }) => {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        lock_enabled: false,
+        authenticated: true,
+        feedback_configured: false,
+      }),
+    }),
+  );
+
+  await page.goto("/");
+
+  await expect(page.locator("#feedback-button")).toBeHidden();
 });
 
 test("tool activity stays in place while its state changes", async ({ page }) => {
@@ -181,6 +213,167 @@ test("the top info button opens accessible app information", async ({ page }) =>
   await aboutDialog.getByRole("button", { name: "Close app information" }).click();
   await expect(aboutDialog).not.toBeVisible();
   await expect(infoButton).toBeFocused();
+});
+
+test("feedback opens, closes, validates, and sends no chat log by default", async ({ page }) => {
+  let submittedPayload = null;
+  await page.route("**/api/feedback", async (route) => {
+    submittedPayload = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+  await page.goto("/");
+
+  const openButton = page.getByRole("button", { name: "Send feedback" });
+  await openButton.click();
+  const dialog = page.getByRole("dialog", { name: "Send feedback" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("1 star", { exact: true })).toBeFocused();
+  await expect(dialog.getByRole("group", { name: "How useful do you find the app?" })).toBeVisible();
+  await expect(dialog.locator("#feedback-chat-log")).not.toBeChecked();
+  await expect(dialog.getByText("New investigation", { exact: true })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Send feedback" }).click();
+  expect(submittedPayload).toBeNull();
+
+  await dialog.getByLabel("Category").selectOption("Bug report");
+  await dialog.getByRole("textbox", { name: /Feedback/ }).fill("The chart labels overlap.");
+  await dialog.getByRole("textbox", { name: /Email/ }).fill("reader@example.eu");
+  await dialog.getByLabel("2 stars", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Send feedback" }).click();
+
+  await expect(dialog.getByText("Thanks. Your feedback was sent.")).toBeVisible();
+  expect(submittedPayload).toEqual({
+    category: "Bug report",
+    feedback: "The chart labels overlap.",
+    rating: 2,
+    email: "reader@example.eu",
+  });
+
+  await dialog.getByRole("button", { name: "Close feedback form" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(openButton).toBeFocused();
+
+  await openButton.click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+});
+
+test("failed feedback keeps every value and retries", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/api/feedback", async (route) => {
+    attempts += 1;
+    await route.fulfill({
+      status: attempts === 1 ? 502 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        attempts === 1
+          ? { detail: "Feedback could not be saved. Try again." }
+          : { ok: true },
+      ),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send feedback" });
+  await dialog.getByLabel("Category").selectOption("Feature request");
+  await dialog.getByRole("textbox", { name: /Feedback/ }).fill("Add a CSV export.");
+  await dialog.getByRole("textbox", { name: /Email/ }).fill("maintainer@example.eu");
+  await dialog.getByLabel("4 stars", { exact: true }).check();
+  await dialog.locator("#feedback-chat-log").check();
+
+  await dialog.getByRole("button", { name: "Send feedback" }).click();
+  await expect(dialog.getByText("Feedback could not be saved. Try again.")).toBeVisible();
+  await expect(dialog.getByLabel("Category")).toHaveValue("Feature request");
+  await expect(dialog.getByRole("textbox", { name: /Feedback/ })).toHaveValue("Add a CSV export.");
+  await expect(dialog.getByRole("textbox", { name: /Email/ })).toHaveValue(
+    "maintainer@example.eu",
+  );
+  await expect(dialog.getByLabel("4 stars", { exact: true })).toBeChecked();
+  await expect(dialog.locator("#feedback-chat-log")).toBeChecked();
+
+  await dialog.getByRole("button", { name: "Retry" }).click();
+  await expect(dialog.getByText("Thanks. Your feedback was sent.")).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
+test("opted-in feedback uses the downloadable chat log", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeDate = Date;
+    const fixed = "2026-09-13T12:00:00.000Z";
+    globalThis.Date = class extends NativeDate {
+      constructor(...args) {
+        super(...(args.length ? args : [fixed]));
+      }
+
+      static now() {
+        return NativeDate.parse(fixed);
+      }
+    };
+  });
+  let submittedPayload = null;
+  await page.route("**/api/chat/title", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ title: "Population lookup", model: "test/model" }),
+    }),
+  );
+  await page.route("**/api/chat/stream", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: `${JSON.stringify({
+        type: "result",
+        data: {
+          answer: "Population data found.",
+          confidence: "high",
+          model: "test/model",
+          result: null,
+          tool_calls: 0,
+          tool_call_details: [],
+        },
+      })}\n`,
+    }),
+  );
+  await page.route("**/api/feedback", async (route) => {
+    submittedPayload = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, chat_log_attached: false }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Investigation query" }).fill("Find population data");
+  await page.getByRole("button", { name: /Ask/ }).click();
+  await expect(page.getByText("Population data found.")).toBeVisible();
+  await expect(page.locator("#current-chat-title")).toHaveText("Population lookup");
+
+  const downloadEvent = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Download log/ }).click();
+  const download = await downloadEvent;
+  const stream = await download.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const downloadedLog = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const dialog = page.getByRole("dialog", { name: "Send feedback" });
+  await dialog.getByLabel("Category").selectOption("Response quality");
+  await dialog.getByRole("textbox", { name: /Feedback/ }).fill("The answer needs more context.");
+  await dialog.getByLabel("3 stars", { exact: true }).check();
+  await dialog.locator("#feedback-chat-log").check();
+  await expect(dialog.getByText("Population lookup", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Send feedback" }).click();
+
+  await expect(
+    dialog.getByText("Your feedback was sent, but the chat log could not be attached."),
+  ).toBeVisible();
+  expect(submittedPayload.chat_log).toEqual(downloadedLog);
 });
 
 test("shows a subtle title loader before the parallel AI title completes", async ({ page }) => {

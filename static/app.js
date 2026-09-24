@@ -80,6 +80,18 @@ const infoButton = document.querySelector("#info-button");
 const aboutDialog = document.querySelector("#about-dialog");
 const aboutDialogClose = document.querySelector("#about-dialog-close");
 const aboutAppVersion = document.querySelector("#about-app-version");
+const feedbackButton = document.querySelector("#feedback-button");
+const feedbackDialog = document.querySelector("#feedback-dialog");
+const feedbackDialogClose = document.querySelector("#feedback-dialog-close");
+const feedbackForm = document.querySelector("#feedback-form");
+const feedbackCategory = document.querySelector("#feedback-category");
+const feedbackText = document.querySelector("#feedback-text");
+const feedbackEmail = document.querySelector("#feedback-email");
+const feedbackChatLog = document.querySelector("#feedback-chat-log");
+const feedbackChatLogName = document.querySelector("#feedback-chat-log-name");
+const feedbackStatus = document.querySelector("#feedback-status");
+const feedbackSubmit = document.querySelector("#feedback-submit");
+const feedbackCancel = document.querySelector("#feedback-cancel");
 const developmentPage = document.querySelector("#development-page");
 const settingsCloseButton = document.querySelector("#settings-close");
 const chatViews = document.querySelectorAll("[data-chat-view]");
@@ -94,6 +106,10 @@ let currentToolCalls = [];
 let lockEnabled = false;
 let notificationTimer = null;
 let pendingRetryContext = null;
+
+function setFeedbackAvailability(configured) {
+  feedbackButton.hidden = !configured;
+}
 
 function syncThemeToggle() {
   const isDark = document.documentElement.dataset.theme === themeApi.DARK;
@@ -130,6 +146,7 @@ async function checkAuth() {
     if (!response.ok) throw new Error("The app could not check the lock status.");
     const data = await response.json();
     lockEnabled = Boolean(data.lock_enabled);
+    setFeedbackAvailability(data.feedback_configured !== false);
     if (!data.authenticated) {
       showAppLock();
       return false;
@@ -665,6 +682,89 @@ function downloadCurrentChatLog() {
   window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
 }
 
+function openFeedbackDialog() {
+  closeSidebar();
+  updateFeedbackChatLogName();
+  if (feedbackStatus.dataset.state === "success") {
+    feedbackStatus.hidden = true;
+    feedbackStatus.textContent = "";
+    delete feedbackStatus.dataset.state;
+  }
+  feedbackDialog.showModal();
+  window.setTimeout(() => feedbackForm.querySelector('input[name="rating"]').focus(), 0);
+}
+
+function updateFeedbackChatLogName() {
+  feedbackChatLogName.textContent = activeChat()?.title || "New investigation";
+}
+
+function closeFeedbackDialog() {
+  if (!feedbackSubmit.disabled) feedbackDialog.close();
+}
+
+async function submitFeedback(event) {
+  event.preventDefault();
+  const feedback = feedbackText.value.trim();
+  feedbackText.setCustomValidity(feedback ? "" : "Feedback must contain text.");
+  if (!feedbackForm.reportValidity()) return;
+
+  feedbackSubmit.disabled = true;
+  feedbackCancel.disabled = true;
+  feedbackDialogClose.disabled = true;
+  feedbackSubmit.textContent = "Sending…";
+  feedbackStatus.hidden = true;
+  feedbackStatus.textContent = "";
+  delete feedbackStatus.dataset.state;
+
+  const rating = feedbackForm.elements.rating.value;
+  const payload = {
+    category: feedbackCategory.value,
+    feedback,
+    rating: Number(rating),
+  };
+  if (feedbackEmail.value.trim()) payload.email = feedbackEmail.value.trim();
+  if (feedbackChatLog.checked) {
+    payload.chat_log = buildChatLog(activeChat(), {
+      exportedAt: new Date().toISOString(),
+      appVersion: APP_VERSION,
+    });
+  }
+
+  try {
+    const response = await fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        typeof result.detail === "string"
+          ? result.detail
+          : "Feedback could not be saved. Try again.",
+      );
+    }
+    feedbackForm.reset();
+    feedbackStatus.textContent =
+      result.chat_log_attached === false
+        ? "Your feedback was sent, but the chat log could not be attached."
+        : "Thanks. Your feedback was sent.";
+    feedbackStatus.dataset.state = "success";
+    feedbackStatus.hidden = false;
+    feedbackSubmit.textContent = "Send feedback";
+  } catch (error) {
+    feedbackStatus.textContent =
+      error instanceof Error ? error.message : "Feedback could not be saved. Try again.";
+    feedbackStatus.dataset.state = "error";
+    feedbackStatus.hidden = false;
+    feedbackSubmit.textContent = "Retry";
+  } finally {
+    feedbackSubmit.disabled = false;
+    feedbackCancel.disabled = false;
+    feedbackDialogClose.disabled = false;
+  }
+}
+
 function addQuestion(content) {
   const article = element("article", "question", content);
   chat.appendChild(article);
@@ -891,6 +991,7 @@ appLockForm.addEventListener("submit", async (event) => {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || "The app could not be unlocked.");
     lockEnabled = Boolean(data.lock_enabled);
+    setFeedbackAvailability(data.feedback_configured !== false);
     showApp();
     await loadDevelopmentSettings();
     renderWorkspace();
@@ -1108,6 +1209,20 @@ aboutDialogClose.addEventListener("click", () => aboutDialog.close());
 aboutDialog.addEventListener("click", (event) => {
   if (event.target === aboutDialog) aboutDialog.close();
 });
+feedbackButton.addEventListener("click", openFeedbackDialog);
+feedbackDialogClose.addEventListener("click", closeFeedbackDialog);
+feedbackCancel.addEventListener("click", closeFeedbackDialog);
+feedbackChatLog.addEventListener("change", updateFeedbackChatLogName);
+feedbackForm.addEventListener("submit", submitFeedback);
+feedbackDialog.addEventListener("click", (event) => {
+  if (event.target === feedbackDialog) closeFeedbackDialog();
+});
+feedbackDialog.addEventListener("close", () => {
+  // On narrow screens the sidebar holding the feedback button is off-screen.
+  const menuVisible = getComputedStyle(menuButton).display !== "none";
+  (menuVisible ? menuButton : feedbackButton).focus();
+});
+feedbackText.addEventListener("input", () => feedbackText.setCustomValidity(""));
 settingsCloseButton.addEventListener("click", () => {
   showChatPage();
   developmentLink.focus();
