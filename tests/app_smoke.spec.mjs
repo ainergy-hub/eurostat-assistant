@@ -444,3 +444,64 @@ test("shows a subtle title loader before the parallel AI title completes", async
   await expect(page.locator(".chat-select-copy strong")).toHaveText("German Population Trends");
   await expect(page.locator(".title-loading")).toHaveCount(0);
 });
+
+test("csv export neutralises formula-like cells", async ({ page }) => {
+  await page.route("**/api/chat/title", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ title: "Regions", model: "test/model" }),
+    }),
+  );
+  await page.route("**/api/chat/stream", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: [
+        JSON.stringify({
+          type: "result",
+          data: {
+            answer: "Two regions found.",
+            confidence: "high",
+            model: "test/model",
+            result: {
+              dataset: { code: "demo_r", title: "Regions", source_url: "https://ec.europa.eu/x" },
+              filters: {},
+              columns: [
+                { key: "geo_label", label: "Geography" },
+                { key: "value", label: "Value" },
+              ],
+              rows: [
+                { geo_label: '=HYPERLINK("http://evil/","x")', value: -1.5 },
+                { geo_label: "Germany", value: 2 },
+              ],
+              chart: { type: "none" },
+            },
+            tool_calls: 0,
+            tool_call_details: [],
+          },
+        }),
+        "",
+      ].join("\n"),
+    }),
+  );
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Investigation query" }).fill("Regions");
+  await page.getByRole("button", { name: /Ask/ }).click();
+  await page.locator("summary", { hasText: "2 rows" }).click();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: /Download CSV/ }).click(),
+  ]);
+  const stream = await download.createReadStream();
+  let csv = "";
+  for await (const chunk of stream) csv += chunk;
+
+  expect(download.suggestedFilename()).toBe("demo_r-observations.csv");
+  expect(csv.replace(/^﻿/, "").split("\n")).toEqual([
+    `"Geography","Value"`,
+    `"'=HYPERLINK(""http://evil/"",""x"")","-1.5"`,
+    `"Germany","2"`,
+  ]);
+});
