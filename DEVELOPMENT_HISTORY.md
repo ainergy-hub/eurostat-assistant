@@ -32,6 +32,16 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Neutralise formulas in CSV exports
+
+- **Changed:** CSV export now prefixes text cells starting with `=`, `+`, `-`, `@`, tab, or carriage
+  return with an apostrophe. Numbers are untouched. CSV building moved from `result_view.js` into
+  the DOM-free `static/csv.js` so it can be unit tested.
+- **Reasoning:** Labels and values come from Eurostat responses and model output. A cell such as
+  `=HYPERLINK(...)` became a live formula when the export was opened in Excel or LibreOffice.
+- **Validation/impact:** Added unit tests for every trigger character, numbers, quotes, and header
+  labels, plus a smoke test that downloads the CSV from the browser and checks its contents.
+
 ### Return generic agent errors to clients
 
 - **Changed:** `AgentError` now carries a separate `public_message`. `/api/chat` and
