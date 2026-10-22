@@ -626,7 +626,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
             request.context_result.model_dump(mode="json") if request.context_result else None,
         )
     except AgentError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.error("Agent request failed: %s", exc)
+        raise HTTPException(status_code=502, detail=exc.public_message) from exc
 
     return _public_response(result, agent_config.model)
 
@@ -666,8 +667,10 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 }
             )
         except AgentError as exc:
-            publish({"type": "error", "message": str(exc)})
+            logger.error("Agent request failed: %s", exc)
+            publish({"type": "error", "message": exc.public_message})
         except Exception:
+            logger.exception("Agent request failed unexpectedly.")
             publish({"type": "error", "message": "The agent request failed unexpectedly."})
         finally:
             event_queue.put(None)
