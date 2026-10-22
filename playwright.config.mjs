@@ -17,6 +17,7 @@ export default defineConfig({
   webServer: {
     command: [
       "env -u APP_PASSWORD",
+      "APP_ALLOW_UNLOCKED=true",
       "OPENROUTER_API_KEY=smoke-test-key",
       "OPENROUTER_MODEL_OPTIONS=test/default-model",
       "AIRTABLE_ACCESS_TOKEN=test-airtable-token",
