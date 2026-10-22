@@ -32,6 +32,16 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Return generic agent errors to clients
+
+- **Changed:** `AgentError` now carries a separate `public_message`. `/api/chat` and
+  `/api/chat/stream` return only that message and log the full error server-side. Timeouts and
+  busy capacity keep specific, actionable messages; everything else returns a generic retry message.
+- **Reasoning:** Child-process failures were forwarded verbatim, exposing Python tracebacks,
+  absolute server paths, and up to 1,000 characters of OpenRouter error bodies to any user.
+- **Validation/impact:** Added endpoint tests confirming internal detail is logged but not returned
+  for both the JSON and streaming endpoints. Operators should read server logs to diagnose failures.
+
 ### Prevent conflicting Eurostat time selectors
 
 - **Observed behavior:** A paired electricity-price and unemployment request completed catalogue
