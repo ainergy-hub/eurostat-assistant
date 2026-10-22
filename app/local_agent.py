@@ -19,8 +19,19 @@ from .agent_config import EVENT_PREFIX
 DEFAULT_TIMEOUT_SECONDS = 180
 
 
+GENERIC_AGENT_ERROR = "The agent request failed. Try again."
+
+
 class AgentError(RuntimeError):
-    """Raised when the local agent process cannot complete the request."""
+    """Raised when the local agent process cannot complete the request.
+
+    The exception text is for server logs and may contain tracebacks or upstream error
+    bodies. Only ``public_message`` is safe to return to clients.
+    """
+
+    def __init__(self, message: str, public_message: str = GENERIC_AGENT_ERROR) -> None:
+        super().__init__(message)
+        self.public_message = public_message
 
 
 @dataclass(frozen=True)
@@ -210,7 +221,8 @@ def _run_process(
         except subprocess.TimeoutExpired as exc:
             _stop_process(process)
             raise AgentError(
-                f"Local agent exceeded the {config.timeout_seconds:g}-second timeout."
+                f"Local agent exceeded the {config.timeout_seconds:g}-second timeout.",
+                "The agent took too long to answer. Try a narrower question.",
             ) from exc
         finally:
             if process.poll() is None:
@@ -251,7 +263,8 @@ def run_eurostat_agent(
     }
 
     if not _AGENT_SLOTS.acquire(timeout=config.timeout_seconds):
-        raise AgentError("Local agent capacity is busy. Try the request again shortly.")
+        message = "Local agent capacity is busy. Try the request again shortly."
+        raise AgentError(message, message)
     try:
         stdout = _run_process(payload, config, openrouter_api_key, on_event)
     finally:
