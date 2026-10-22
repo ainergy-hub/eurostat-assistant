@@ -12,6 +12,8 @@ The project is designed for focused questions that can be answered from a bounde
 Eurostat dataset. It is a reference implementation, not a replacement for Eurostat's full Data
 Browser or a general-purpose business intelligence platform.
 
+![Eurostat Assistant homepage with a question box and example investigations](docs/images/app-screenshot.png)
+
 ## Current scope
 
 Eurostat Assistant can:
