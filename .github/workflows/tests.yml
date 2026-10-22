@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -21,7 +25,6 @@ jobs:
           node-version: "24"
       - run: uv sync --frozen
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - run: uv run python -m unittest discover -s tests -v
       - run: uv run python -m tests.prompt_regression replay
       - run: node --check static/app.js
@@ -29,3 +32,7 @@ jobs:
       - run: node --check static/chart.js
       - run: npm run test:unit
       - run: npm run test:smoke
+        env:
+          # Use the Chrome preinstalled on the runner; installing Playwright's
+          # Chromium with --with-deps spends minutes in apt.
+          PLAYWRIGHT_CHANNEL: chrome

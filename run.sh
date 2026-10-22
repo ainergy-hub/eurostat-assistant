@@ -31,6 +31,11 @@ if [ -z "${OPENROUTER_MODEL_OPTIONS:-}" ]; then
   exit 1
 fi
 
+if [ -z "${APP_PASSWORD:-}" ] && [ "${APP_ALLOW_UNLOCKED:-}" != "true" ]; then
+  echo "Missing APP_PASSWORD. Set it in .env, or set APP_ALLOW_UNLOCKED=true to run unlocked in a trusted environment." >&2
+  exit 1
+fi
+
 EUROSTAT_DEFAULT_MODEL="${OPENROUTER_MODEL_OPTIONS%%,*}"
 
 PORT="${PORT:-8000}"
