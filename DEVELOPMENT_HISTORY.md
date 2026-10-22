@@ -32,6 +32,16 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Refuse to start without an app password
+
+- **Changed:** The server now fails at startup when `APP_PASSWORD` is unset, unless
+  `APP_ALLOW_UNLOCKED=true` is set explicitly. `run.sh` applies the same check before launching.
+- **Reasoning:** In preparation for open-sourcing, a deployment that forgot the password left every
+  `/api/*` endpoint open, letting anyone spend the operator's OpenRouter credit and write to their
+  Airtable feedback table. Failing closed makes the unlocked mode a deliberate choice.
+- **Validation/impact:** Added startup tests for the missing-password, opt-in, and password cases.
+  Existing deployments without `APP_PASSWORD` must set it or opt in before upgrading.
+
 ### Prevent conflicting Eurostat time selectors
 
 - **Observed behavior:** A paired electricity-price and unemployment request completed catalogue

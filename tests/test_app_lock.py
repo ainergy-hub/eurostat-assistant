@@ -183,3 +183,21 @@ class AppLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StartupLockConfigurationTests(unittest.TestCase):
+    def test_refuses_to_start_without_password(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "APP_PASSWORD is not set"):
+                with TestClient(app):
+                    pass
+
+    def test_starts_unlocked_with_explicit_opt_in(self) -> None:
+        with patch.dict(os.environ, {"APP_ALLOW_UNLOCKED": "true"}, clear=True):
+            with TestClient(app) as client:
+                self.assertFalse(client.get("/api/auth/status").json()["lock_enabled"])
+
+    def test_starts_with_password(self) -> None:
+        with patch.dict(os.environ, {"APP_PASSWORD": "test-app-password"}, clear=True):
+            with TestClient(app) as client:
+                self.assertTrue(client.get("/api/auth/status").json()["lock_enabled"])
