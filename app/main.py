@@ -10,6 +10,7 @@ import queue
 import re
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
@@ -39,8 +40,34 @@ from .title_agent import DEFAULT_TITLE_MODEL, TitleAgentError, generate_chat_tit
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = ROOT / "static"
+ALLOW_UNLOCKED_VARIABLE = "APP_ALLOW_UNLOCKED"
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Eurostat Assistant")
+
+def _app_password() -> str:
+    return os.getenv("APP_PASSWORD", "")
+
+
+def _require_app_lock_configuration() -> None:
+    """Refuse to serve an unlocked app unless the operator explicitly opts in."""
+    if _app_password():
+        return
+    if os.getenv(ALLOW_UNLOCKED_VARIABLE, "").strip().lower() in {"1", "true", "yes"}:
+        logger.warning("APP_PASSWORD is not set; the app is running without its lock.")
+        return
+    raise RuntimeError(
+        "APP_PASSWORD is not set. Set it to enable the app lock, or set "
+        f"{ALLOW_UNLOCKED_VARIABLE}=true to run unlocked in a trusted environment."
+    )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    _require_app_lock_configuration()
+    yield
+
+
+app = FastAPI(title="Eurostat Assistant", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
@@ -62,11 +89,6 @@ AIRTABLE_ENVIRONMENT_VARIABLES = (
     "AIRTABLE_BASE_ID",
     "AIRTABLE_TABLE_ID",
 )
-logger = logging.getLogger(__name__)
-
-
-def _app_password() -> str:
-    return os.getenv("APP_PASSWORD", "")
 
 
 def _airtable_values() -> tuple[str, str, str]:

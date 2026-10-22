@@ -132,7 +132,8 @@ browser's selection applies to new questions only and remains local to that brow
 `openai/gpt-5.4-nano`, a small model suited to fast background work.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
-Leave `APP_PASSWORD` unset only when the app is running in an already trusted environment.
+`APP_PASSWORD` is required: the server refuses to start without it. To run without the lock in an
+already trusted environment, such as a local machine, set `APP_ALLOW_UNLOCKED=true` instead.
 `LOCAL_AGENT_CONCURRENCY` optionally controls the maximum number of agent child processes. It
 defaults to `2`; additional requests wait for an available slot.
 
@@ -192,7 +193,7 @@ promoting a deployment.
 3. Generate a public domain from the service's **Settings → Networking** page.
 
 Do not set `PORT`; Railway injects it automatically.
-`APP_PASSWORD` is strongly recommended for a public deployment. The health endpoint is intentionally
+Do not set `APP_ALLOW_UNLOCKED` on a public deployment. The health endpoint is intentionally
 public so Railway can verify a locked deployment, but it exposes only service readiness booleans.
 
 ## How the app works
