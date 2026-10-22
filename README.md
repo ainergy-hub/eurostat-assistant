@@ -211,8 +211,12 @@ public so Railway can verify a locked deployment, but it exposes only service re
    model-authored HTML or JavaScript.
 
 The browser translates the validated `chart` contract into a bounded Vega-Lite specification and
-renders it as SVG with Vega-Embed. Vega 6.2.0, Vega-Lite 6.4.3, and Vega-Embed 7.1.0 are loaded from
-the jsDelivr CDN; the model never supplies arbitrary Vega-Lite specifications.
+renders it as SVG with Vega-Embed. Vega 6.2.0, Vega-Lite 6.4.3, Vega-Embed 7.1.0, and the IBM Plex
+fonts are served from `static/vendor/` (see its README), so the browser makes no third-party requests.
+Every response carries a Content-Security-Policy that limits scripts, styles, fonts, and network
+requests to the app's own origin. Vega expressions run through `vega-interpreter` instead of
+`new Function()`, so the policy does not need `'unsafe-eval'`. The model never supplies arbitrary
+Vega-Lite specifications.
 
 Complete display history stays on the device in the browser's IndexedDB storage. Investigation
 metadata, messages, and diagnostic events are stored separately, so the app loads the lightweight

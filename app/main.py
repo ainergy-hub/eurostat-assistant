@@ -106,6 +106,30 @@ def _request_is_unlocked(request: Request) -> bool:
     return not password or _valid_session_token(request.cookies.get(SESSION_COOKIE), password)
 
 
+# Every script, style, and font is served from /static, so the browser can refuse anything else.
+# Inline styles stay allowed because Vega writes style attributes on the SVGs it renders.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    )
+)
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
+
+
 @app.middleware("http")
 async def require_app_unlock(request: Request, call_next):
     path = request.url.path
@@ -121,6 +145,15 @@ async def require_app_unlock(request: Request, call_next):
         content={"detail": "App is locked. Enter the app password to continue."},
         headers={"Cache-Control": "no-store"},
     )
+
+
+# Registered after require_app_unlock so it wraps it and also covers locked 401 responses.
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 def _model_name() -> str:

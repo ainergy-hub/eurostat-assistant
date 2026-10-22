@@ -32,6 +32,21 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Self-host browser assets and add a Content-Security-Policy
+
+- **Changed:** Vega, Vega-Lite, Vega-Embed, and the IBM Plex fonts now ship in `static/vendor/`
+  instead of loading from jsDelivr and Google Fonts. Every response sets a Content-Security-Policy
+  restricting scripts, styles, fonts, and connections to `'self'`, plus `nosniff`,
+  `X-Frame-Options: DENY`, and a referrer policy. Charts use `vega-interpreter` so the policy needs
+  no `'unsafe-eval'`.
+- **Reasoning:** The CDN scripts had no integrity hashes, so a compromised CDN or package could read
+  every chat stored in IndexedDB and call the API with the user's session. Google Fonts also sent
+  every visitor's IP address to Google, which German courts have treated as a GDPR violation.
+- **Validation/impact:** A new smoke test renders a chart under the production CSP and fails on any
+  console error or external request. Line, area, bar (grouped, normalized, top-N), heatmap,
+  histogram, and box-plot charts were also checked manually with tooltips and legend highlighting.
+  `style-src` still allows `'unsafe-inline'` because Vega writes inline styles.
+
 ### Prevent conflicting Eurostat time selectors
 
 - **Observed behavior:** A paired electricity-price and unemployment request completed catalogue

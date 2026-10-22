@@ -183,3 +183,15 @@ class AppLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SecurityHeaderTests(unittest.TestCase):
+    def test_pages_and_api_responses_send_security_headers(self) -> None:
+        with patch.dict(os.environ, {"APP_PASSWORD": "test-app-password"}, clear=True):
+            client = TestClient(app)
+            for path in ("/", "/api/health", "/api/settings/development"):
+                headers = client.get(path).headers
+                self.assertIn("script-src 'self'", headers["content-security-policy"])
+                self.assertNotIn("unsafe-eval", headers["content-security-policy"])
+                self.assertEqual(headers["x-content-type-options"], "nosniff")
+                self.assertEqual(headers["x-frame-options"], "DENY")

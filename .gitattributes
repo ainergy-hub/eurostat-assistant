@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Third-party browser assets served by the app
+static/vendor/** linguist-vendored -diff

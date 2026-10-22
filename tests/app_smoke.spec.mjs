@@ -12,14 +12,6 @@ test("the assembled application starts without browser errors", async ({ page })
     browserErrors.push(`page: ${error.message}`);
   });
 
-  await page.route("https://cdn.jsdelivr.net/**", (route) =>
-    route.fulfill({
-      body: "",
-      contentType: "application/javascript",
-      status: 200,
-    }),
-  );
-
   const response = await page.goto("/");
   expect(response?.ok()).toBe(true);
   await page.waitForLoadState("networkidle");
@@ -443,4 +435,81 @@ test("shows a subtle title loader before the parallel AI title completes", async
   await expect(page.locator("#current-chat-title")).toHaveText("German Population Trends");
   await expect(page.locator(".chat-select-copy strong")).toHaveText("German Population Trends");
   await expect(page.locator(".title-loading")).toHaveCount(0);
+});
+
+test("charts render with the self-hosted Vega bundle under the content security policy", async ({
+  page,
+}) => {
+  const browserErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(`console: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => browserErrors.push(`page: ${error.message}`));
+  const externalRequests = [];
+  page.on("request", (request) => {
+    if (!request.url().startsWith("http://127.0.0.1:")) externalRequests.push(request.url());
+  });
+
+  const rows = ["2021", "2022", "2023", "2024"].flatMap((year, index) => [
+    { geo: "DE", geo_label: "Germany", time: year, time_label: year, value: 83 + index * 0.2 },
+    { geo: "FR", geo_label: "France", time: year, time_label: year, value: 67 + index * 0.3 },
+  ]);
+  await page.route("**/api/chat/title", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ title: "Population trend", model: "test/model" }),
+    }),
+  );
+  await page.route("**/api/chat/stream", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/x-ndjson",
+      body: [
+        JSON.stringify({
+          type: "result",
+          data: {
+            answer: "Population rose in both countries.",
+            confidence: "high",
+            model: "test/model",
+            result: {
+              dataset: {
+                code: "demo_pjan",
+                title: "Population on 1 January",
+                source_url: "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/demo_pjan",
+              },
+              filters: { geo: ["DE", "FR"] },
+              columns: [
+                { key: "geo_label", label: "Geography" },
+                { key: "time_label", label: "Period" },
+                { key: "value", label: "Value" },
+              ],
+              rows,
+              chart: {
+                type: "line",
+                purpose: "trend",
+                x: "time_label",
+                y: "value",
+                series: "geo_label",
+                title: "Population on 1 January",
+              },
+            },
+            tool_calls: 0,
+            tool_call_details: [],
+          },
+        }),
+        "",
+      ].join("\n"),
+    }),
+  );
+
+  const response = await page.goto("/");
+  expect(response?.headers()["content-security-policy"]).toContain("script-src 'self'");
+  await page.getByRole("textbox", { name: "Investigation query" }).fill("Population trend");
+  await page.getByRole("button", { name: /Ask/ }).click();
+
+  await expect(page.locator("svg.marks").first()).toBeVisible();
+  await expect(page.getByText("The chart could not be rendered.")).toHaveCount(0);
+  expect(browserErrors).toEqual([]);
+  expect(externalRequests).toEqual([]);
 });
