@@ -12,7 +12,7 @@ The project is designed for focused questions that can be answered from a bounde
 Eurostat dataset. It is a reference implementation, not a replacement for Eurostat's full Data
 Browser or a general-purpose business intelligence platform.
 
-![Eurostat Assistant comparing solar electricity generation in Germany and France, 2020–2024, with a trend chart built from Eurostat dataset nrg_bal_peh](docs/images/app-screenshot.png)
+![Eurostat Assistant homepage with a question box and example investigations](docs/images/app-screenshot.png)
 
 ## Current scope
 
