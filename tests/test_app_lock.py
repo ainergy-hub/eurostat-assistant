@@ -6,7 +6,15 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app.main import _model_name, _title_model_name, app
+from app.main import (
+    MAX_UNLOCK_FAILURES_GLOBAL,
+    MAX_UNLOCK_FAILURES_PER_CLIENT,
+    UNLOCK_WINDOW_SECONDS,
+    _model_name,
+    _title_model_name,
+    app,
+    unlock_throttle,
+)
 
 
 class AppLockTests(unittest.TestCase):
@@ -22,11 +30,13 @@ class AppLockTests(unittest.TestCase):
             },
         )
         self.password_patch.start()
+        unlock_throttle.reset()
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
         self.client.close()
         self.password_patch.stop()
+        unlock_throttle.reset()
 
     def test_chat_api_requires_an_unlocked_session(self) -> None:
         status = self.client.get("/api/auth/status")
@@ -179,6 +189,94 @@ class AppLockTests(unittest.TestCase):
             self.client.post("/api/chat", json={"message": "hello"}).status_code,
             401,
         )
+
+
+class UnlockThrottleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.env_patch = patch.dict(os.environ, {"APP_PASSWORD": "test-app-password"})
+        self.env_patch.start()
+        self.now = 1_000.0
+        self.clock_patch = patch.object(unlock_throttle, "clock", lambda: self.now)
+        self.clock_patch.start()
+        unlock_throttle.reset()
+        self.client = TestClient(app)
+
+    def tearDown(self) -> None:
+        self.client.close()
+        self.clock_patch.stop()
+        self.env_patch.stop()
+        unlock_throttle.reset()
+
+    def unlock(self, password: str, client: TestClient | None = None):
+        return (client or self.client).post("/api/auth/unlock", json={"password": password})
+
+    def fail_until_limit(self) -> None:
+        for _ in range(MAX_UNLOCK_FAILURES_PER_CLIENT):
+            self.assertEqual(self.unlock("wrong").status_code, 401)
+
+    def test_client_is_locked_out_after_repeated_failures(self) -> None:
+        self.fail_until_limit()
+
+        response = self.unlock("wrong")
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers["retry-after"], str(UNLOCK_WINDOW_SECONDS))
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertIn("Too many unlock attempts", response.json()["detail"])
+        self.assertIn("15 minutes", response.json()["detail"])
+
+    def test_correct_password_is_rejected_while_locked_out(self) -> None:
+        self.fail_until_limit()
+        self.now += 60
+
+        response = self.unlock("test-app-password")
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers["retry-after"], str(UNLOCK_WINDOW_SECONDS - 60))
+        self.assertNotIn("set-cookie", response.headers)
+
+    def test_successful_unlock_resets_the_client_counter(self) -> None:
+        for _ in range(MAX_UNLOCK_FAILURES_PER_CLIENT - 1):
+            self.assertEqual(self.unlock("wrong").status_code, 401)
+        self.assertEqual(self.unlock("test-app-password").status_code, 200)
+
+        self.fail_until_limit()
+        self.assertEqual(self.unlock("wrong").status_code, 429)
+
+    def test_lockout_expires_after_the_window(self) -> None:
+        self.fail_until_limit()
+        self.now += UNLOCK_WINDOW_SECONDS - 1
+        self.assertEqual(self.unlock("test-app-password").status_code, 429)
+
+        self.now += 1
+
+        self.assertEqual(self.unlock("wrong").status_code, 401)
+        self.assertEqual(self.unlock("test-app-password").status_code, 200)
+
+    def test_lockout_is_per_client(self) -> None:
+        self.fail_until_limit()
+
+        with TestClient(app, client=("203.0.113.7", 50000)) as other:
+            self.assertEqual(self.unlock("test-app-password", other).status_code, 200)
+
+    def test_global_cap_applies_across_clients(self) -> None:
+        for index in range(MAX_UNLOCK_FAILURES_GLOBAL):
+            _, retry_after = unlock_throttle.acquire(f"198.51.100.{index}")
+            self.assertIsNone(retry_after)
+
+        response = self.unlock("test-app-password")
+
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("retry-after", response.headers)
+
+    def test_expired_clients_are_pruned(self) -> None:
+        for index in range(10):
+            unlock_throttle.acquire(f"198.51.100.{index}")
+        self.now += UNLOCK_WINDOW_SECONDS
+
+        unlock_throttle.acquire("203.0.113.7")
+
+        self.assertEqual(list(unlock_throttle._clients), ["203.0.113.7"])
 
 
 if __name__ == "__main__":
