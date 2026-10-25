@@ -59,12 +59,10 @@ You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), and an
 ```bash
 uv sync
 cp .env.example .env
-./run.sh
 ```
 
-Then open `http://127.0.0.1:8000`. Set `HOST` or `PORT` to change where it listens.
-
-The variables in `.env`:
+Edit `.env` before starting the app. Replace the example API key, model names, and password
+with your own values:
 
 - `OPENROUTER_API_KEY`: required.
 - `OPENROUTER_MODEL_OPTIONS`: required. Comma-separated chat models. The first is the default.
@@ -77,9 +75,28 @@ The variables in `.env`:
 - `AIRTABLE_ACCESS_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_ID`: optional. They turn on the
   feedback form.
 
-For feedback, create an Airtable table with the fields `Category`, `Feedback`, `Rating`, `email`,
-`Chat log attachment`, and `Created at`. Make the last two an attachment field and a created-time
-field. Then create a
+Leave the optional `AIRTABLE_*` variables blank unless you configure feedback.
+
+Start the app:
+
+```bash
+./run.sh
+```
+
+Open `http://127.0.0.1:8000`. The server listens only on the loopback interface by default. Set
+`HOST` or `PORT` to change where it listens; `HOST=0.0.0.0` allows access from other machines.
+Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address to trust its headers.
+
+For feedback, create an Airtable table with these fields:
+
+- `Category`: single select or single-line text.
+- `Feedback`: long text.
+- `Rating`: number.
+- `email`: email or single-line text.
+- `Chat log attachment`: attachment.
+- `Created at`: created-time field.
+
+Then create a
 [personal access token](https://airtable.com/create/tokens) with only the `data.records:write`
 scope and only that base. The base and table IDs are in the table URL and start with `app` and
 `tbl`. The chat log is sent only if the user opts in.
@@ -96,6 +113,7 @@ Each request gets at most 12 tool calls. All limits live in `agent_limits.json`.
 is not an OS sandbox, so don't add shell or user-code execution without real isolation.
 
 **Download log** in the investigation header exports a JSON diagnostic log without the data rows.
+Review it before sharing because chat text can still contain reported values.
 **Development** in the sidebar shows the model, tools, limits, and runtime details.
 
 Main endpoints: `POST /api/chat/stream` for streamed answers, `POST /api/chat` for a single
@@ -118,11 +136,12 @@ headless Chrome.
 
 Prompt regressions are paired files: a scenario in `tests/prompt_scenarios/<id>.json` with prompts
 and expected outcomes, and a cassette in `tests/prompt_cassettes/<id>.json` with recorded
-responses. Record against live services, then replay offline:
+responses. Record a new scenario against live services, then replay offline. Replace `scenario_id`
+with the scenario's filename without `.json`:
 
 ```bash
-uv run python -m tests.prompt_regression record <id>
-uv run python -m tests.prompt_regression replay <id>
+uv run python -m tests.prompt_regression record scenario_id
+uv run python -m tests.prompt_regression replay scenario_id
 ```
 
 Review cassettes before committing. They contain Eurostat data and generated answers.
