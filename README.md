@@ -170,8 +170,10 @@ Start the app:
 ./run.sh
 ```
 
-Open `http://127.0.0.1:8000`. The server listens on all interfaces by default. Set `HOST` or
-`PORT` in the environment to override the defaults.
+Open `http://127.0.0.1:8000`. The server listens only on the loopback interface by default. Set
+`HOST` or `PORT` in the environment to override the defaults; `HOST=0.0.0.0` makes the app reachable
+from other machines on your network. If you run the app behind your own reverse proxy, set
+`FORWARDED_ALLOW_IPS` to the proxy's address so Uvicorn trusts its forwarded headers.
 
 ## Deploy to Railway
 

@@ -39,13 +39,13 @@ fi
 EUROSTAT_DEFAULT_MODEL="${OPENROUTER_MODEL_OPTIONS%%,*}"
 
 PORT="${PORT:-8000}"
-HOST="${HOST:-0.0.0.0}"
+HOST="${HOST:-127.0.0.1}"
 
 echo "Starting Eurostat Assistant on http://${HOST}:${PORT}"
 echo "Using OpenRouter model: ${EUROSTAT_DEFAULT_MODEL}"
 
+# Uvicorn trusts proxy headers only from 127.0.0.1 unless FORWARDED_ALLOW_IPS
+# lists the addresses of a reverse proxy in front of this server.
 exec uv run uvicorn app.main:app \
   --host "$HOST" \
-  --port "$PORT" \
-  --proxy-headers \
-  --forwarded-allow-ips="*"
+  --port "$PORT"
