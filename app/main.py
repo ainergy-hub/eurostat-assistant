@@ -8,6 +8,7 @@ import logging
 import os
 import queue
 import re
+import secrets
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -99,28 +100,43 @@ def _feedback_is_configured() -> bool:
     return all(_airtable_values())
 
 
+# Sessions live in this process only, so locking can revoke them; a restart signs everyone out.
+_sessions: dict[str, tuple[int, str]] = {}
+_sessions_lock = threading.Lock()
+
+
+def _password_fingerprint(password: str) -> str:
+    return hashlib.sha256(f"eurostat-lens:{password}".encode("utf-8")).hexdigest()
+
+
 def _session_token(password: str, expires_at: int) -> str:
-    payload = str(expires_at)
-    signature = hmac.new(
-        password.encode("utf-8"),
-        f"eurostat-lens:{payload}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"{payload}.{signature}"
+    token = secrets.token_urlsafe(32)
+    now = int(time.time())
+    with _sessions_lock:
+        for expired in [key for key, (expiry, _) in _sessions.items() if expiry <= now]:
+            del _sessions[expired]
+        _sessions[token] = (expires_at, _password_fingerprint(password))
+    return token
 
 
 def _valid_session_token(token: str | None, password: str, now: int | None = None) -> bool:
     if not token or not password:
         return False
-    try:
-        expires_text, _ = token.split(".", 1)
-        expires_at = int(expires_text)
-    except (TypeError, ValueError):
+    with _sessions_lock:
+        session = _sessions.get(token)
+    if session is None:
         return False
+    expires_at, fingerprint = session
     if expires_at <= (int(time.time()) if now is None else now):
         return False
-    expected = _session_token(password, expires_at)
-    return hmac.compare_digest(token, expected)
+    # Changing APP_PASSWORD invalidates sessions issued under the old one.
+    return hmac.compare_digest(fingerprint, _password_fingerprint(password))
+
+
+def _revoke_session_token(token: str | None) -> None:
+    if token:
+        with _sessions_lock:
+            _sessions.pop(token, None)
 
 
 def _request_is_unlocked(request: Request) -> bool:
@@ -426,7 +442,8 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
 
 
 @app.post("/api/auth/lock")
-def lock() -> JSONResponse:
+def lock(request: Request) -> JSONResponse:
+    _revoke_session_token(request.cookies.get(SESSION_COOKIE))
     response = JSONResponse(
         {
             "authenticated": False,
