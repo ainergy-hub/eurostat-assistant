@@ -31,19 +31,21 @@ It does not join datasets freely, draw maps, or have accounts, sync, rate limiti
 
 ## Use the Codex skill
 
-The skill and helper need no OpenRouter key and no third-party Python packages.
+The skill lives in [`skill/`](skill/): `SKILL.md`, the Codex interface metadata in `agents/`, the
+helper in `scripts/`, and reference notes in `references/`. It needs no OpenRouter key and no
+third-party Python packages.
 
 ```bash
 mkdir -p ~/.codex/skills
-cp -R . ~/.codex/skills/fetch-eurostat-data
+cp -R skill ~/.codex/skills/fetch-eurostat-data
 ```
 
 Reload Codex and ask it to use `$fetch-eurostat-data`. Or call the helper directly:
 
 ```bash
-python3 scripts/eurostat_api.py search "population by age country"
-python3 scripts/eurostat_api.py dimensions demo_pjan
-python3 scripts/eurostat_api.py fetch demo_pjan \
+python3 skill/scripts/eurostat_api.py search "population by age country"
+python3 skill/scripts/eurostat_api.py dimensions demo_pjan
+python3 skill/scripts/eurostat_api.py fetch demo_pjan \
   --param geo=DE,FR --param sex=T --param age=TOTAL \
   --last-time-period 5
 ```

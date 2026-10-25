@@ -16,10 +16,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY app ./app
-COPY references ./references
-COPY scripts ./scripts
+COPY skill ./skill
 COPY static ./static
-COPY SKILL.md ./
 COPY agent_limits.json ./
 
 RUN useradd --create-home --uid 10001 appuser
