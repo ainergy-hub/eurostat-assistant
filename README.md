@@ -408,6 +408,11 @@ Replay failures identify the turn, first failed assertion, and a one-scenario re
 Recording strips reasoning fields and does not capture credentials or HTTP headers. Cassettes contain
 public Eurostat observations and generated answer text, so review changes before committing them.
 
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidelines. Report
+vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 This project is available under the [MIT License](LICENSE).
