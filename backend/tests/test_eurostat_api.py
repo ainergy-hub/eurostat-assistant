@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import unittest
 from argparse import Namespace
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
+
+# The skill lives in the top-level skill/ folder, outside backend/.
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from skill.scripts.eurostat_api import (
     MAX_ESTIMATED_CELLS,

@@ -6,16 +6,17 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent
+SKILL_DIR = ROOT.parents[1] / "skill"
 EUROSTAT_HELPER = ROOT / "eurostat_api.py"
 if not EUROSTAT_HELPER.exists():
-    EUROSTAT_HELPER = ROOT.parent / "skill" / "scripts" / "eurostat_api.py"
+    EUROSTAT_HELPER = SKILL_DIR / "scripts" / "eurostat_api.py"
 SKILL = ROOT / "SKILL.md"
 if not SKILL.exists():
-    SKILL = ROOT.parent / "skill" / "SKILL.md"
+    SKILL = SKILL_DIR / "SKILL.md"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 LIMITS_PATH = ROOT / "agent_limits.json"
 if not LIMITS_PATH.exists():
-    LIMITS_PATH = ROOT.parent / "agent_limits.json"
+    LIMITS_PATH = SKILL_DIR / "agent_limits.json"
 LIMITS = json.loads(LIMITS_PATH.read_text(encoding="utf-8"))
 MAX_TOOL_CHARS = int(LIMITS["max_tool_output_characters"])
 MAX_RESULT_ROWS = int(LIMITS["max_result_rows"])
@@ -35,7 +36,7 @@ MAX_EVENT_PREVIEW_CHARS = 700
 CATALOG_CACHE = Path(os.getenv("EUROSTAT_CATALOG_CACHE", ROOT / "eurostat_toc.tsv"))
 CHART_REFERENCE = ROOT / "chart-selection.md"
 if not CHART_REFERENCE.exists():
-    CHART_REFERENCE = ROOT.parent / "skill" / "references" / "chart-selection.md"
+    CHART_REFERENCE = SKILL_DIR / "references" / "chart-selection.md"
 
 CHART_TYPES = {
     "line",

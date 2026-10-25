@@ -42,7 +42,7 @@ from .title_agent import DEFAULT_TITLE_MODEL, TitleAgentError, generate_chat_tit
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC_DIR = ROOT / "static"
+STATIC_DIR = Path(os.getenv("EUROSTAT_STATIC_DIR", ROOT.parent / "frontend" / "static"))
 ALLOW_UNLOCKED_VARIABLE = "APP_ALLOW_UNLOCKED"
 logger = logging.getLogger(__name__)
 

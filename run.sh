@@ -14,8 +14,8 @@ fi
 # uv-managed Python installations on macOS may not be able to build some
 # certificate chains from the system CA file. Prefer certifi's maintained CA
 # bundle for local processes unless the user has supplied a custom trust store.
-if [ -z "${SSL_CERT_FILE:-}" ] && [ -x ".venv/bin/python" ]; then
-  LOCAL_CERT_BUNDLE="$(".venv/bin/python" -m certifi 2>/dev/null || true)"
+if [ -z "${SSL_CERT_FILE:-}" ] && [ -x "backend/.venv/bin/python" ]; then
+  LOCAL_CERT_BUNDLE="$("backend/.venv/bin/python" -m certifi 2>/dev/null || true)"
   if [ -n "$LOCAL_CERT_BUNDLE" ] && [ -f "$LOCAL_CERT_BUNDLE" ]; then
     export SSL_CERT_FILE="$LOCAL_CERT_BUNDLE"
   fi
@@ -46,6 +46,6 @@ echo "Using OpenRouter model: ${EUROSTAT_DEFAULT_MODEL}"
 
 # Uvicorn trusts proxy headers only from 127.0.0.1 unless FORWARDED_ALLOW_IPS
 # lists the addresses of a reverse proxy in front of this server.
-exec uv run uvicorn app.main:app \
+exec uv run --directory backend uvicorn app.main:app \
   --host "$HOST" \
   --port "$PORT"
