@@ -34,6 +34,20 @@ Add or update tests for behaviour you change. If you change agent prompts or too
 prompt regression scenarios in `backend/tests/prompt_scenarios/`. Record new cassettes only when the
 change needs them, and review their contents before committing.
 
+### Prompt regression scenarios
+
+Each scenario is a pair of files: `backend/tests/prompt_scenarios/<id>.json` holds the prompts and
+expected outcomes, and `backend/tests/prompt_cassettes/<id>.json` holds the recorded responses.
+Record a scenario against live services once, then replay it offline. Run these from `backend/`,
+replacing `scenario_id` with the scenario's filename without `.json`:
+
+```bash
+uv run python -m tests.prompt_regression record scenario_id
+uv run python -m tests.prompt_regression replay scenario_id
+```
+
+Cassettes contain Eurostat data and generated answers, so review them before committing.
+
 ## Pull requests
 
 - Describe what changed, why, and how you tested it.

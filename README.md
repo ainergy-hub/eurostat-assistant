@@ -9,8 +9,9 @@ each works without the other:
 - A reference web app where you chat with an agent. It answers with sources, a chart, a filterable
   table, and a CSV download.
 
-It works best for focused questions that one Eurostat dataset can answer. It is not a replacement
-for the Eurostat Data Browser.
+It works best for focused questions that one Eurostat dataset can answer. 
+**Limitations:** it does not freely combine datasets, draw maps, or have user accounts. It is not a
+replacement for the [Eurostat Data Browser](https://ec.europa.eu/eurostat/databrowser/).
 
 ![Eurostat Assistant homepage with a question box and example investigations](docs/images/app-screenshot.png)
 
@@ -29,7 +30,146 @@ for the Eurostat Data Browser.
 
 It does not join datasets freely, draw maps, or have accounts, sync, rate limiting, or monitoring.
 
-## Repository layout
+## A. Quick start: web app
+
+You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), and an OpenRouter API key.
+
+1. Install the dependencies:
+
+   ```bash
+   cd backend && uv sync && cd ..
+   ```
+
+2. Create your settings file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Open `.env` and fill in at least `OPENROUTER_API_KEY`, `OPENROUTER_MODEL_OPTIONS`, and
+   `APP_PASSWORD`. See [Settings](#settings) for what each one does.
+
+4. Start the app:
+
+   ```bash
+   ./run.sh
+   ```
+
+5. Open <http://127.0.0.1:8000>, enter your password, and ask a question.
+
+### What you can ask
+
+It works best for focused questions that one Eurostat dataset can answer. For example:
+
+- *Compare the population of Germany, France, and Italy over the latest 5 years.*
+- *How has annual inflation changed in the EU since 2020?*
+- *Compare the unemployment rate in Spain and Portugal over the latest 8 years.*
+
+Every answer includes:
+
+- **A chart.** Trends are charted automatically. Ask for a bar, scatter, heatmap, histogram, or box
+  plot, or ask it to sort, relabel, rescale, or add a trendline.
+- **A table** of up to 500 rows that you can sort, filter, and download as CSV.
+- **Sources**: the dataset code, the filters used, the last update date, data flags, and the API URL
+  that reproduces the data.
+
+You can ask follow-up questions. Changes to the last chart reuse the data already loaded instead of
+fetching it again. To compare two measures, such as GDP and emissions, ask for their relationship
+and you get a scatter plot matched by country and year.
+
+Your chat history is saved in your browser, not on the server.
+
+### Settings
+
+All settings live in `.env` at the root of the repository.
+
+| Variable | Required | What it does |
+| --- | --- | --- |
+| `OPENROUTER_API_KEY` | Yes | Your OpenRouter API key. |
+| `OPENROUTER_MODEL_OPTIONS` | Yes | Comma-separated list of chat models. The first is the default. |
+| `APP_PASSWORD` | Yes | Password that protects the app. See below. |
+| `OPENROUTER_TITLE_MODEL` | No | Model that names your chats. Defaults to `openai/gpt-5.4-nano`. |
+| `LOCAL_AGENT_CONCURRENCY` | No | How many questions can run at once. Defaults to `2`. |
+| `AIRTABLE_*` | No | Turns on the feedback form. See [Feedback form](#optional-feedback-form). |
+| `HOST`, `PORT` | No | Where the server listens. Defaults to `127.0.0.1:8000`. |
+
+**Password and sessions.** After you enter the password, you stay signed in for 12 hours, or until
+you click **Lock app**. Restarting the server or changing the password signs everyone out. On your
+own machine you can skip the password with `APP_ALLOW_UNLOCKED=true`. Never do that on a server
+other people can reach.
+
+**Access from other machines.** By default only your own computer can open the app. Set
+`HOST=0.0.0.0` to allow access from your network. Behind a reverse proxy, set
+`FORWARDED_ALLOW_IPS` to the proxy's address.
+
+### Optional: feedback form
+
+The feedback form sends submissions to an Airtable table. To turn it on:
+
+1. Create a table with these fields: `Category` (single select or text), `Feedback` (long text),
+   `Rating` (number), `email` (email or text), `Chat log attachment` (attachment), and
+   `Created at` (created time).
+2. Create a [personal access token](https://airtable.com/create/tokens) with only the
+   `data.records:write` scope, limited to that base.
+3. Set `AIRTABLE_ACCESS_TOKEN`, `AIRTABLE_BASE_ID` (starts with `app`), and `AIRTABLE_TABLE_ID`
+   (starts with `tbl`) in `.env`. You can find both IDs in the table's URL.
+
+A user's chat log is attached only if they choose to include it.
+
+## B. Quick start: Codex skill
+
+Copy the skill into your Codex skills folder:
+
+```bash
+mkdir -p ~/.codex/skills
+cp -R backend/skill ~/.codex/skills/fetch-eurostat-data
+```
+
+Reload Codex and ask it to use `$fetch-eurostat-data`.
+
+You can also run the helper yourself from `backend/skill/`:
+
+```bash
+cd backend/skill
+
+# Find datasets
+python3 scripts/eurostat_api.py search "population by age country"
+
+# See a dataset's dimensions and codes
+python3 scripts/eurostat_api.py dimensions demo_pjan
+
+# Fetch data for Germany and France over the latest 5 years
+python3 scripts/eurostat_api.py fetch demo_pjan \
+  --param geo=DE,FR --param sex=T --param age=TOTAL \
+  --last-time-period 5
+```
+
+`fetch` prints CSV, or JSON with `--output json`. It needs either `--time` or `--last-time-period`,
+and returns at most 500 rows unless you pass `--max-rows`.
+
+### How it works
+
+1. You ask a question in the browser.
+2. The server starts a short-lived agent for that question, with a 180-second time limit.
+3. The agent can do four things: search Eurostat's catalogue, look up a dataset's dimensions, fetch
+   data, and publish a result. It may make up to 12 of these calls.
+4. Each step streams to your browser, so you can watch its progress.
+5. The server checks the final result, and the browser draws the chart and table.
+
+The model only chooses data and chart settings. It never writes HTML or code that runs in your
+browser. All limits are in `backend/skill/agent_limits.json`.
+
+The agent runs in a separate process but not in a full sandbox. Don't give it shell access or let it
+run user code without proper isolation.
+
+**Download log** in the investigation header saves a diagnostic log without the data rows. Chat text
+can still contain values, so check it before sharing. **Development** in the sidebar shows the
+model, tools, and limits in use.
+
+API endpoints: `POST /api/chat/stream` (streamed answer), `POST /api/chat` (single response), and
+`GET /api/health` (readiness check).
+
+## Development
 
 ```text
 backend/                 Python: FastAPI server, agent, skill, and their tests
@@ -49,144 +189,27 @@ run.sh                   Starts the web app locally
 Dockerfile               Container image for deployment
 ```
 
-The backend serves the frontend: FastAPI serves `frontend/static/` directly, so there is no
-separate frontend build or server.
+There is no separate frontend build: the backend serves `frontend/static/` as is.
 
-## Use the Codex skill
-
-The skill and helper need no OpenRouter key and no third-party Python packages.
+Run the tests. None of them need API keys.
 
 ```bash
-mkdir -p ~/.codex/skills
-cp -R backend/skill ~/.codex/skills/fetch-eurostat-data
-```
-
-Reload Codex and ask it to use `$fetch-eurostat-data`. Or call the helper directly from
-`backend/skill/`:
-
-```bash
-cd backend/skill
-python3 scripts/eurostat_api.py search "population by age country"
-python3 scripts/eurostat_api.py dimensions demo_pjan
-python3 scripts/eurostat_api.py fetch demo_pjan \
-  --param geo=DE,FR --param sex=T --param age=TOTAL \
-  --last-time-period 5
-```
-
-`fetch` prints CSV by default, or JSON with `--output json`. Every fetch needs `--time` or
-`--last-time-period`, and returns at most 500 rows unless you pass `--max-rows`.
-
-## Run the web app
-
-You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), and an
-[OpenRouter](https://openrouter.ai/) API key.
-
-```bash
-(cd backend && uv sync)
-cp .env.example .env
-```
-
-The Python environment lives in `backend/.venv`. Keep `.env` at the repository root; `run.sh`
-reads it from there. Edit `.env` before starting the app. Replace the example API key, model names, and password
-with your own values:
-
-- `OPENROUTER_API_KEY`: required.
-- `OPENROUTER_MODEL_OPTIONS`: required. Comma-separated chat models. The first is the default.
-- `OPENROUTER_TITLE_MODEL`: model that writes chat titles. Defaults to `openai/gpt-5.4-nano`.
-- `APP_PASSWORD`: required. Locks the app behind a 12-hour session. **Lock app** ends the session
-  on the server. Sessions live in server memory, so a restart or a new password signs everyone
-  out. On a trusted machine, set `APP_ALLOW_UNLOCKED=true` instead. Never do that on a public
-  server.
-- `LOCAL_AGENT_CONCURRENCY`: how many agent processes run at once. Defaults to `2`.
-- `AIRTABLE_ACCESS_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_ID`: optional. They turn on the
-  feedback form.
-
-Leave the optional `AIRTABLE_*` variables blank unless you configure feedback.
-
-Start the app:
-
-```bash
-./run.sh
-```
-
-Open `http://127.0.0.1:8000`. The server listens only on the loopback interface by default. Set
-`HOST` or `PORT` to change where it listens; `HOST=0.0.0.0` allows access from other machines.
-Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address to trust its headers.
-
-For feedback, create an Airtable table with these fields:
-
-- `Category`: single select or single-line text.
-- `Feedback`: long text.
-- `Rating`: number.
-- `email`: email or single-line text.
-- `Chat log attachment`: attachment.
-- `Created at`: created-time field.
-
-Then create a
-[personal access token](https://airtable.com/create/tokens) with only the `data.records:write`
-scope and only that base. The base and table IDs are in the table URL and start with `app` and
-`tbl`. The chat log is sent only if the user opts in.
-
-## How it works
-
-Each question runs in a short-lived child process with a 180-second timeout and a stripped-down
-environment. The model can call four tools: search, inspect dimensions, fetch, and publish a
-result. The server streams each call to the browser as newline-delimited JSON, validates the final
-result, and the browser renders it as a Vega-Lite chart. The model never writes HTML, JavaScript,
-or Vega-Lite.
-
-Each request gets at most 12 tool calls. All limits live in `backend/skill/agent_limits.json`. The
-child process is not an OS sandbox, so don't add shell or user-code execution without real
-isolation.
-
-**Download log** in the investigation header exports a JSON diagnostic log without the data rows.
-Review it before sharing because chat text can still contain reported values.
-**Development** in the sidebar shows the model, tools, limits, and runtime details.
-
-Main endpoints: `POST /api/chat/stream` for streamed answers, `POST /api/chat` for a single
-response, and `GET /api/health` for a public readiness check.
-
-## Tests
-
-Backend tests run from `backend/`:
-
-```bash
+# Backend
 cd backend
 uv sync --frozen
 uv run python -m unittest discover -s tests -v
 uv run python -m tests.prompt_regression replay
-```
 
-Frontend tests run from `frontend/`. The smoke test starts the backend itself, so sync the backend
-first:
-
-```bash
-cd frontend
+# Frontend (the smoke test starts the backend, so sync the backend first)
+cd ../frontend
 npm ci
 npx playwright install chromium
 npm run test:unit
 npm run test:smoke
 ```
 
-None of these need API keys. They run on recorded fixtures, and the smoke test loads the app in
-headless Chrome.
-
-Prompt regressions are paired files: a scenario in `backend/tests/prompt_scenarios/<id>.json` with
-prompts and expected outcomes, and a cassette in `backend/tests/prompt_cassettes/<id>.json` with
-recorded responses. Record a new scenario against live services, then replay offline. Run these
-from `backend/` and replace `scenario_id` with the scenario's filename without `.json`:
-
-```bash
-uv run python -m tests.prompt_regression record scenario_id
-uv run python -m tests.prompt_regression replay scenario_id
-```
-
-Review cassettes before committing. They contain Eurostat data and generated answers.
-
-## Contributing and security
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull request guidelines. Report
-vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request guidelines and how to record new prompt
+scenarios. Report security issues privately as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
