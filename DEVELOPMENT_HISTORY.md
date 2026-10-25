@@ -34,7 +34,7 @@ Suggested entry shape:
 
 ### Self-host browser assets and add a Content-Security-Policy
 
-- **Changed:** Vega, Vega-Lite, Vega-Embed, and the IBM Plex fonts now ship in `static/vendor/`
+- **Changed:** Vega, Vega-Lite, Vega-Embed, and the IBM Plex fonts now ship in `frontend/static/vendor/`
   instead of loading from jsDelivr and Google Fonts. Every response sets a Content-Security-Policy
   restricting scripts, styles, fonts, and connections to `'self'`, plus `nosniff`,
   `X-Frame-Options: DENY`, and a referrer policy. Charts use `vega-interpreter` so the policy needs
@@ -46,6 +46,51 @@ Suggested entry shape:
   console error or external request. Line, area, bar (grouped, normalized, top-N), heatmap,
   histogram, and box-plot charts were also checked manually with tooltips and legend highlighting.
   `style-src` still allows `'unsafe-inline'` because Vega writes inline styles.
+
+### Split the repository into backend and frontend folders
+
+- **Changed:** Python code moved to `backend/` (the FastAPI server in `backend/app/`, Python tests
+  and prompt regression fixtures in `backend/tests/`, `pyproject.toml` and `uv.lock`). The Codex
+  skill stays in the top-level `skill/` folder, and `agent_limits.json` moved into it. Browser code moved to `frontend/static/`, with its Node tests, `package.json`,
+  and Playwright config in `frontend/`. `run.sh`, the Dockerfile, CI, and the skill install
+  instructions follow the new paths. The URL layout (`/static/...`) is unchanged.
+- **Reasoning:** The root mixed server code, browser code, skill files, and two toolchains, so it
+  was hard to see what belonged to which part. The skill stays at the top level because people
+  install it into Codex without the backend; the server only reads it.
+- **Validation/impact:** All Python tests, prompt replays, Node unit tests, and the Playwright smoke
+  test pass from the new folders. Existing checkouts need `uv sync` in `backend/` (the virtual
+  environment now lives at `backend/.venv`) and `npm ci` in `frontend/`. The local `.env` stays at
+  the repository root.
+
+### Neutralise formulas in CSV exports
+
+- **Changed:** CSV export now prefixes text cells starting with `=`, `+`, `-`, `@`, tab, or carriage
+  return with an apostrophe. Numbers are untouched. CSV building moved from `result_view.js` into
+  the DOM-free `static/csv.js` so it can be unit tested.
+- **Reasoning:** Labels and values come from Eurostat responses and model output. A cell such as
+  `=HYPERLINK(...)` became a live formula when the export was opened in Excel or LibreOffice.
+- **Validation/impact:** Added unit tests for every trigger character, numbers, quotes, and header
+  labels, plus a smoke test that downloads the CSV from the browser and checks its contents.
+
+### Return generic agent errors to clients
+
+- **Changed:** `AgentError` now carries a separate `public_message`. `/api/chat` and
+  `/api/chat/stream` return only that message and log the full error server-side. Timeouts and
+  busy capacity keep specific, actionable messages; everything else returns a generic retry message.
+- **Reasoning:** Child-process failures were forwarded verbatim, exposing Python tracebacks,
+  absolute server paths, and up to 1,000 characters of OpenRouter error bodies to any user.
+- **Validation/impact:** Added endpoint tests confirming internal detail is logged but not returned
+  for both the JSON and streaming endpoints. Operators should read server logs to diagnose failures.
+
+### Refuse to start without an app password
+
+- **Changed:** The server now fails at startup when `APP_PASSWORD` is unset, unless
+  `APP_ALLOW_UNLOCKED=true` is set explicitly. `run.sh` applies the same check before launching.
+- **Reasoning:** In preparation for open-sourcing, a deployment that forgot the password left every
+  `/api/*` endpoint open, letting anyone spend the operator's OpenRouter credit and write to their
+  Airtable feedback table. Failing closed makes the unlocked mode a deliberate choice.
+- **Validation/impact:** Added startup tests for the missing-password, opt-in, and password cases.
+  Existing deployments without `APP_PASSWORD` must set it or opt in before upgrading.
 
 ### Prevent conflicting Eurostat time selectors
 

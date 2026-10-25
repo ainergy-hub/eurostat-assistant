@@ -17,12 +17,13 @@ export default defineConfig({
   webServer: {
     command: [
       "env -u APP_PASSWORD",
+      "APP_ALLOW_UNLOCKED=true",
       "OPENROUTER_API_KEY=smoke-test-key",
       "OPENROUTER_MODEL_OPTIONS=test/default-model",
       "AIRTABLE_ACCESS_TOKEN=test-airtable-token",
       "AIRTABLE_BASE_ID=appTestBase",
       "AIRTABLE_TABLE_ID=tblTestTable",
-      "uv run uvicorn app.main:app",
+      "uv run --directory ../backend uvicorn app.main:app",
       `--host 127.0.0.1 --port ${port}`,
     ].join(" "),
     url: `http://127.0.0.1:${port}/api/health`,

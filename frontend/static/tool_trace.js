@@ -1,3 +1,5 @@
+import { toolCallSummaryText } from "./tool_activity.js?v=20261022-1";
+
 const toolCallDialogSummary = document.querySelector("#tool-call-dialog-summary");
 const toolCallDetails = document.querySelector("#tool-call-details");
 
@@ -20,15 +22,9 @@ function toolDuration(detail) {
   return `${(detail.duration_ms / 1000).toFixed(2)} s`;
 }
 
-export function renderToolCallDetails(details = []) {
+export function renderToolCallDetails(details = [], phase = "completed") {
   toolCallDetails.replaceChildren();
-  const completed = details.filter((detail) => detail.status === "completed").length;
-  const failed = details.filter((detail) => detail.status === "error").length;
-  const running = details.filter((detail) => detail.status === "running").length;
-  const summary = [`${completed} of ${details.length} complete`];
-  if (running) summary.push(`${running} running`);
-  if (failed) summary.push(`${failed} failed`);
-  toolCallDialogSummary.textContent = details.length ? summary.join(" · ") : "No tool calls yet.";
+  toolCallDialogSummary.textContent = toolCallSummaryText(details, phase);
 
   for (const detail of details) {
     const item = element("li", "tool-call-detail");

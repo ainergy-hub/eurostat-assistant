@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -11,21 +15,37 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v8.3.2
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           enable-cache: true
-          python-version: "3.13"
-      - uses: actions/setup-node@v6
+          python-version: "3.14"
+          cache-dependency-glob: backend/uv.lock
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
-      - run: uv sync --frozen
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: uv run python -m unittest discover -s tests -v
-      - run: uv run python -m tests.prompt_regression replay
-      - run: node --check static/app.js
-      - run: node --check static/chat_store.js
-      - run: node --check static/chart.js
-      - run: npm run test:unit
-      - run: npm run test:smoke
+      - name: Install backend
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Install frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          uv run python -m unittest discover -s tests -v
+          uv run python -m tests.prompt_regression replay
+      - name: Frontend tests
+        working-directory: frontend
+        run: |
+          node --check static/app.js
+          node --check static/chat_store.js
+          node --check static/chart.js
+          npm run test:unit
+      - name: Smoke test
+        working-directory: frontend
+        run: npm run test:smoke
+        env:
+          # Use the Chrome preinstalled on the runner; installing Playwright's
+          # Chromium with --with-deps spends minutes in apt.
+          PLAYWRIGHT_CHANNEL: chrome

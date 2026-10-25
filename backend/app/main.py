@@ -5,11 +5,15 @@ import hmac
 import base64
 import json
 import logging
+import math
 import os
 import queue
 import re
+import secrets
 import threading
 import time
+from collections import deque
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import HTTPError, URLError
@@ -38,13 +42,42 @@ from .title_agent import DEFAULT_TITLE_MODEL, TitleAgentError, generate_chat_tit
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STATIC_DIR = ROOT / "static"
+STATIC_DIR = Path(os.getenv("EUROSTAT_STATIC_DIR", ROOT.parent / "frontend" / "static"))
+ALLOW_UNLOCKED_VARIABLE = "APP_ALLOW_UNLOCKED"
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Eurostat Assistant")
+
+def _app_password() -> str:
+    return os.getenv("APP_PASSWORD", "")
+
+
+def _require_app_lock_configuration() -> None:
+    """Refuse to serve an unlocked app unless the operator explicitly opts in."""
+    if _app_password():
+        return
+    if os.getenv(ALLOW_UNLOCKED_VARIABLE, "").strip().lower() in {"1", "true", "yes"}:
+        logger.warning("APP_PASSWORD is not set; the app is running without its lock.")
+        return
+    raise RuntimeError(
+        "APP_PASSWORD is not set. Set it to enable the app lock, or set "
+        f"{ALLOW_UNLOCKED_VARIABLE}=true to run unlocked in a trusted environment."
+    )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    _require_app_lock_configuration()
+    yield
+
+
+app = FastAPI(title="Eurostat Assistant", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
+UNLOCK_WINDOW_SECONDS = 15 * 60
+MAX_UNLOCK_FAILURES_PER_CLIENT = 5
+MAX_UNLOCK_FAILURES_GLOBAL = 50
 APP_VERSION = "0.3.0"
 MODEL_ID_PATTERN = re.compile(r"^~?[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -62,11 +95,6 @@ AIRTABLE_ENVIRONMENT_VARIABLES = (
     "AIRTABLE_BASE_ID",
     "AIRTABLE_TABLE_ID",
 )
-logger = logging.getLogger(__name__)
-
-
-def _app_password() -> str:
-    return os.getenv("APP_PASSWORD", "")
 
 
 def _airtable_values() -> tuple[str, str, str]:
@@ -77,28 +105,43 @@ def _feedback_is_configured() -> bool:
     return all(_airtable_values())
 
 
+# Sessions live in this process only, so locking can revoke them; a restart signs everyone out.
+_sessions: dict[str, tuple[int, str]] = {}
+_sessions_lock = threading.Lock()
+
+
+def _password_fingerprint(password: str) -> str:
+    return hashlib.sha256(f"eurostat-lens:{password}".encode("utf-8")).hexdigest()
+
+
 def _session_token(password: str, expires_at: int) -> str:
-    payload = str(expires_at)
-    signature = hmac.new(
-        password.encode("utf-8"),
-        f"eurostat-lens:{payload}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"{payload}.{signature}"
+    token = secrets.token_urlsafe(32)
+    now = int(time.time())
+    with _sessions_lock:
+        for expired in [key for key, (expiry, _) in _sessions.items() if expiry <= now]:
+            del _sessions[expired]
+        _sessions[token] = (expires_at, _password_fingerprint(password))
+    return token
 
 
 def _valid_session_token(token: str | None, password: str, now: int | None = None) -> bool:
     if not token or not password:
         return False
-    try:
-        expires_text, _ = token.split(".", 1)
-        expires_at = int(expires_text)
-    except (TypeError, ValueError):
+    with _sessions_lock:
+        session = _sessions.get(token)
+    if session is None:
         return False
+    expires_at, fingerprint = session
     if expires_at <= (int(time.time()) if now is None else now):
         return False
-    expected = _session_token(password, expires_at)
-    return hmac.compare_digest(token, expected)
+    # Changing APP_PASSWORD invalidates sessions issued under the old one.
+    return hmac.compare_digest(fingerprint, _password_fingerprint(password))
+
+
+def _revoke_session_token(token: str | None) -> None:
+    if token:
+        with _sessions_lock:
+            _sessions.pop(token, None)
 
 
 def _request_is_unlocked(request: Request) -> bool:
@@ -128,6 +171,71 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
 }
+
+
+class UnlockThrottle:
+    """Sliding-window limit on failed unlock attempts, per client and across all clients."""
+
+    def __init__(self) -> None:
+        self.clock = time.monotonic
+        self._lock = threading.Lock()
+        self._clients: dict[str, deque[float]] = {}
+        self._global: deque[float] = deque()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._clients.clear()
+            self._global.clear()
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - UNLOCK_WINDOW_SECONDS
+        while self._global and self._global[0] <= cutoff:
+            self._global.popleft()
+        for client, attempts in list(self._clients.items()):
+            while attempts and attempts[0] <= cutoff:
+                attempts.popleft()
+            if not attempts:
+                del self._clients[client]
+
+    def acquire(self, client: str) -> tuple[float, int | None]:
+        """Reserve an attempt, counted as a failure until release() is called.
+
+        Returns the reservation time and, when limited, the Retry-After seconds. Reserving
+        before the password check stops concurrent requests from exceeding the limits.
+        """
+        with self._lock:
+            now = self.clock()
+            # Expired entries are dropped on every attempt and the global cap stops new
+            # ones, so the per-client map never holds more clients than the global cap.
+            self._prune(now)
+            attempts = self._clients.get(client, deque())
+            full = [
+                window[0]
+                for window, limit in (
+                    (attempts, MAX_UNLOCK_FAILURES_PER_CLIENT),
+                    (self._global, MAX_UNLOCK_FAILURES_GLOBAL),
+                )
+                if len(window) >= limit
+            ]
+            if full:
+                retry_after = max(full) + UNLOCK_WINDOW_SECONDS - now
+                return now, max(1, math.ceil(retry_after))
+            attempts.append(now)
+            self._clients[client] = attempts
+            self._global.append(now)
+            return now, None
+
+    def release(self, client: str, reserved_at: float) -> None:
+        """Clear the client's failures after a successful unlock."""
+        with self._lock:
+            self._clients.pop(client, None)
+            try:
+                self._global.remove(reserved_at)
+            except ValueError:
+                pass
+
+
+unlock_throttle = UnlockThrottle()
 
 
 @app.middleware("http")
@@ -408,6 +516,18 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
                 "feedback_configured": _feedback_is_configured(),
             }
         )
+    client = request.client.host if request.client else "unknown"
+    reserved_at, retry_after = unlock_throttle.acquire(client)
+    if retry_after is not None:
+        minutes = math.ceil(retry_after / 60)
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Too many unlock attempts. "
+                f"Try again in {minutes} minute{'' if minutes == 1 else 's'}."
+            },
+            headers={"Cache-Control": "no-store", "Retry-After": str(retry_after)},
+        )
     if not hmac.compare_digest(credentials.password.encode("utf-8"), password.encode("utf-8")):
         return JSONResponse(
             status_code=401,
@@ -415,6 +535,7 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
             headers={"Cache-Control": "no-store"},
         )
 
+    unlock_throttle.release(client, reserved_at)
     expires_at = int(time.time()) + SESSION_TTL_SECONDS
     response = JSONResponse(
         {
@@ -437,7 +558,8 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
 
 
 @app.post("/api/auth/lock")
-def lock() -> JSONResponse:
+def lock(request: Request) -> JSONResponse:
+    _revoke_session_token(request.cookies.get(SESSION_COOKIE))
     response = JSONResponse(
         {
             "authenticated": False,
@@ -637,7 +759,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
             request.context_result.model_dump(mode="json") if request.context_result else None,
         )
     except AgentError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.error("Agent request failed: %s", exc)
+        raise HTTPException(status_code=502, detail=exc.public_message) from exc
 
     return _public_response(result, agent_config.model)
 
@@ -677,8 +800,10 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 }
             )
         except AgentError as exc:
-            publish({"type": "error", "message": str(exc)})
+            logger.error("Agent request failed: %s", exc)
+            publish({"type": "error", "message": exc.public_message})
         except Exception:
+            logger.exception("Agent request failed unexpectedly.")
             publish({"type": "error", "message": "The agent request failed unexpectedly."})
         finally:
             event_queue.put(None)

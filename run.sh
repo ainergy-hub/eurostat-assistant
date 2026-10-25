@@ -14,8 +14,8 @@ fi
 # uv-managed Python installations on macOS may not be able to build some
 # certificate chains from the system CA file. Prefer certifi's maintained CA
 # bundle for local processes unless the user has supplied a custom trust store.
-if [ -z "${SSL_CERT_FILE:-}" ] && [ -x ".venv/bin/python" ]; then
-  LOCAL_CERT_BUNDLE="$(".venv/bin/python" -m certifi 2>/dev/null || true)"
+if [ -z "${SSL_CERT_FILE:-}" ] && [ -x "backend/.venv/bin/python" ]; then
+  LOCAL_CERT_BUNDLE="$("backend/.venv/bin/python" -m certifi 2>/dev/null || true)"
   if [ -n "$LOCAL_CERT_BUNDLE" ] && [ -f "$LOCAL_CERT_BUNDLE" ]; then
     export SSL_CERT_FILE="$LOCAL_CERT_BUNDLE"
   fi
@@ -31,16 +31,21 @@ if [ -z "${OPENROUTER_MODEL_OPTIONS:-}" ]; then
   exit 1
 fi
 
+if [ -z "${APP_PASSWORD:-}" ] && [ "${APP_ALLOW_UNLOCKED:-}" != "true" ]; then
+  echo "Missing APP_PASSWORD. Set it in .env, or set APP_ALLOW_UNLOCKED=true to run unlocked in a trusted environment." >&2
+  exit 1
+fi
+
 EUROSTAT_DEFAULT_MODEL="${OPENROUTER_MODEL_OPTIONS%%,*}"
 
 PORT="${PORT:-8000}"
-HOST="${HOST:-0.0.0.0}"
+HOST="${HOST:-127.0.0.1}"
 
 echo "Starting Eurostat Assistant on http://${HOST}:${PORT}"
 echo "Using OpenRouter model: ${EUROSTAT_DEFAULT_MODEL}"
 
-exec uv run uvicorn app.main:app \
+# Uvicorn trusts proxy headers only from 127.0.0.1 unless FORWARDED_ALLOW_IPS
+# lists the addresses of a reverse proxy in front of this server.
+exec uv run --directory backend uvicorn app.main:app \
   --host "$HOST" \
-  --port "$PORT" \
-  --proxy-headers \
-  --forwarded-allow-ips="*"
+  --port "$PORT"

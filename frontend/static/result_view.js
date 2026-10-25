@@ -1,3 +1,4 @@
+import { csvText } from "./csv.js";
 import { eurostatDatasetUrl } from "./markdown.js";
 
 const PAGE_SIZE = 12;
@@ -173,17 +174,10 @@ export function createTableSections(result) {
   return sections;
 }
 
-function csvCell(value) {
-  const text = value === null || value === undefined ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
 function downloadCsv(result, columns) {
-  const lines = [
-    columns.map((column) => csvCell(column.label)).join(","),
-    ...result.rows.map((row) => columns.map((column) => csvCell(row[column.key])).join(",")),
-  ];
-  const blob = new Blob([`\ufeff${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob([`\ufeff${csvText(result.rows, columns)}`], {
+    type: "text/csv;charset=utf-8",
+  });
   const link = document.createElement("a");
   const code = result.dataset?.code || "eurostat";
   link.href = URL.createObjectURL(blob);

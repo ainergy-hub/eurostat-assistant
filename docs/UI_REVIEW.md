@@ -1,6 +1,6 @@
 # UI review — Eurostat Assistant web app
 
-A pass over the reference web app frontend (`static/`), covering the shell, the hero,
+A pass over the reference web app frontend (`frontend/static/`), covering the shell, the hero,
 the composer, the About and Development dialogs, and both themes at desktop and mobile
 widths. The design system itself is strong: consistent tokens, a coherent editorial
 serif + mono pairing, real focus-visible styles, a `prefers-reduced-motion` block, and
@@ -9,7 +9,7 @@ rebuild.
 
 ## Changes applied in this pass
 
-Three fixes are already committed to `static/`:
+Three fixes are already committed to `frontend/static/`:
 
 ### 1. The intended fonts were never loaded
 
@@ -53,7 +53,7 @@ bar matches the app background instead of a default white/grey.
   (`index.html:517-519`). That means: it breaks in an air-gapped or offline deploy, it leaks
   visitor IPs to two third parties, and the CDN scripts carry no Subresource Integrity hash.
   For a reference app shipped with a `Dockerfile`, vendoring `woff2` files under
-  `static/fonts/` with `@font-face`, and vendoring or SRI-pinning the Vega bundle, closes all
+  `frontend/static/fonts/` with `@font-face`, and vendoring or SRI-pinning the Vega bundle, closes all
   three gaps. This supersedes the Google Fonts link added above.
 - **Reduce swap layout shift.** With `display=swap` the serif headline reflows when Plex
   Serif arrives. Add `size-adjust` / `ascent-override` metrics to a fallback `@font-face`

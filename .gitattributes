@@ -2,4 +2,4 @@
 * text=auto
 
 # Third-party browser assets served by the app
-static/vendor/** linguist-vendored -diff
+frontend/static/vendor/** linguist-vendored -diff
