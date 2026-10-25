@@ -190,6 +190,30 @@ class AppLockTests(unittest.TestCase):
             401,
         )
 
+    def test_lock_revokes_the_session_on_the_server(self) -> None:
+        self.client.post(
+            "/api/auth/unlock",
+            json={"password": "test-app-password"},
+        )
+        token = self.client.cookies.get("eurostat_lens_session")
+        self.assertEqual(self.client.get("/api/settings/development").status_code, 200)
+
+        self.client.post("/api/auth/lock")
+
+        with TestClient(app, cookies={"eurostat_lens_session": token}) as replay:
+            self.assertEqual(replay.get("/api/settings/development").status_code, 401)
+            self.assertFalse(replay.get("/api/auth/status").json()["authenticated"])
+
+    def test_changing_the_password_invalidates_existing_sessions(self) -> None:
+        self.client.post(
+            "/api/auth/unlock",
+            json={"password": "test-app-password"},
+        )
+        self.assertEqual(self.client.get("/api/settings/development").status_code, 200)
+
+        with patch.dict(os.environ, {"APP_PASSWORD": "rotated-app-password"}):
+            self.assertEqual(self.client.get("/api/settings/development").status_code, 401)
+
 
 class UnlockThrottleTests(unittest.TestCase):
     def setUp(self) -> None:
