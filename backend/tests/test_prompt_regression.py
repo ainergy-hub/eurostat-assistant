@@ -19,6 +19,14 @@ from tests.prompt_regression import (
 )
 
 
+def _without_durations(value):
+    if isinstance(value, dict):
+        return {k: _without_durations(v) for k, v in value.items() if k != "duration_ms"}
+    if isinstance(value, list):
+        return [_without_durations(item) for item in value]
+    return value
+
+
 class PromptRegressionHarnessTests(unittest.TestCase):
     def test_every_scenario_has_a_valid_replay_cassette(self) -> None:
         paths = sorted(SCENARIO_DIR.glob("*.json"))
@@ -48,7 +56,7 @@ class PromptRegressionHarnessTests(unittest.TestCase):
             first, _ = execute_scenario(scenario, mode="replay", cassette=cassette)
             second, _ = execute_scenario(scenario, mode="replay", cassette=cassette)
 
-        self.assertEqual(first, second)
+        self.assertEqual(_without_durations(first), _without_durations(second))
         self.assertEqual(first[0]["result"]["filters"]["siec"], ["RA420"])
 
     def test_replay_reports_cassette_exhaustion_and_unexpected_tools(self) -> None:

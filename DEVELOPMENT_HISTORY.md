@@ -32,6 +32,21 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Split the repository into backend and frontend folders
+
+- **Changed:** Python code moved to `backend/` (the FastAPI server in `backend/app/`, Python tests
+  and prompt regression fixtures in `backend/tests/`, `pyproject.toml` and `uv.lock`). The Codex
+  skill stays in the top-level `skill/` folder, and `agent_limits.json` moved into it. Browser code moved to `frontend/static/`, with its Node tests, `package.json`,
+  and Playwright config in `frontend/`. `run.sh`, the Dockerfile, CI, and the skill install
+  instructions follow the new paths. The URL layout (`/static/...`) is unchanged.
+- **Reasoning:** The root mixed server code, browser code, skill files, and two toolchains, so it
+  was hard to see what belonged to which part. The skill stays at the top level because people
+  install it into Codex without the backend; the server only reads it.
+- **Validation/impact:** All Python tests, prompt replays, Node unit tests, and the Playwright smoke
+  test pass from the new folders. Existing checkouts need `uv sync` in `backend/` (the virtual
+  environment now lives at `backend/.venv`) and `npm ci` in `frontend/`. The local `.env` stays at
+  the repository root.
+
 ### Neutralise formulas in CSV exports
 
 - **Changed:** CSV export now prefixes text cells starting with `=`, `+`, `-`, `@`, tab, or carriage
