@@ -32,6 +32,22 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Throttle failed app unlock attempts
+
+- **Changed:** `POST /api/auth/unlock` allows 5 failed attempts per client address and 50 across
+  all clients in a 15-minute sliding window. Further attempts get HTTP 429 with `Retry-After` and
+  are not checked against the password. A successful unlock clears the client's counter. The
+  Docker image no longer passes `--forwarded-allow-ips="*"`; it trusts proxy headers only from
+  the addresses in `FORWARDED_ALLOW_IPS`, defaulting to 127.0.0.1 as `run.sh` does.
+- **Reasoning:** The password check had no attempt limit. Trusting forwarded headers from any
+  address let a client send a new `X-Forwarded-For` value with each request and never hit the
+  per-client limit. The global cap bounds memory and total guessing, at the cost that a
+  distributed attacker can block unlocking for everyone for up to 15 minutes.
+- **Validation/impact:** Added tests with a patched clock for lockout, rejection of the correct
+  password while locked out, reset on success, window expiry, per-client isolation, the global
+  cap, and pruning. Docker deployments behind a reverse proxy must set `FORWARDED_ALLOW_IPS` to
+  the proxy's address, or all users share one per-client limit.
+
 ### Neutralise formulas in CSV exports
 
 - **Changed:** CSV export now prefixes text cells starting with `=`, `+`, `-`, `@`, tab, or carriage

@@ -86,7 +86,10 @@ Start the app:
 
 Open `http://127.0.0.1:8000`. The server listens only on the loopback interface by default. Set
 `HOST` or `PORT` to change where it listens; `HOST=0.0.0.0` allows access from other machines.
-Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address to trust its headers.
+Behind a reverse proxy, including in Docker, set `FORWARDED_ALLOW_IPS` to the proxy's address to
+trust its headers. Otherwise every request appears to come from the proxy, so all users share one
+unlock limit. Never set it to `*` on a server clients can reach directly: they could then fake their
+address and get past the per-address unlock limit.
 
 For feedback, create an Airtable table with these fields:
 

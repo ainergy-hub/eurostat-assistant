@@ -25,4 +25,6 @@ COPY agent_limits.json ./
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
 
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\" --proxy-headers --forwarded-allow-ips=\"*\""]
+# Uvicorn trusts proxy headers only from 127.0.0.1 unless FORWARDED_ALLOW_IPS lists the
+# addresses of the reverse proxy in front of this container.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]
