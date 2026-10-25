@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   CHAT_LOG_SCHEMA_VERSION,
   CHAT_TITLE_MAX_LENGTH,
+  HISTORY_MESSAGE_LIMIT,
   SUMMARY_LIMIT,
   buildChatLog,
   buildContextSummary,
@@ -30,6 +31,16 @@ const history = recentHistory(messages);
 assert.equal(history.length, 6);
 assert.equal(history[0].content, "Question 4");
 assert.deepEqual(Object.keys(history[0]), ["role", "content"]);
+
+const longAnswer = `${"a".repeat(HISTORY_MESSAGE_LIMIT - 2)}😀${"b".repeat(50)}`;
+const [truncatedAnswer] = recentHistory([{ role: "assistant", content: longAnswer }]);
+assert.ok(truncatedAnswer.content.length <= HISTORY_MESSAGE_LIMIT);
+assert.ok(truncatedAnswer.content.endsWith("a…"));
+assert.equal(
+  recentHistory([{ role: "assistant", content: "a".repeat(HISTORY_MESSAGE_LIMIT) }])[0].content
+    .length,
+  HISTORY_MESSAGE_LIMIT,
+);
 assert.equal(latestDataResult(messages).dataset.code, "demo_pjan");
 assert.equal(latestDataResult([{ role: "user", content: "No chart yet" }]), null);
 
