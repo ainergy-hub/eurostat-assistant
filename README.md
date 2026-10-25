@@ -134,6 +134,8 @@ browser's selection applies to new questions only and remains local to that brow
 `openai/gpt-5.4-nano`, a small model suited to fast background work.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
 session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
+Unlock attempts are throttled in-process: after 5 failed attempts from one client address, or 50
+across all clients, within 15 minutes, further attempts get HTTP 429 until the window passes.
 `APP_PASSWORD` is required: the server refuses to start without it. To run without the lock in an
 already trusted environment, such as a local machine, set `APP_ALLOW_UNLOCKED=true` instead.
 `LOCAL_AGENT_CONCURRENCY` optionally controls the maximum number of agent child processes. It
