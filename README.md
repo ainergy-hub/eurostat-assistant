@@ -133,7 +133,9 @@ browser's selection applies to new questions only and remains local to that brow
 `OPENROUTER_TITLE_MODEL` controls the independent title workflow and defaults to
 `openai/gpt-5.4-nano`, a small model suited to fast background work.
 `APP_PASSWORD` enables the app lock. When it is set, the browser receives a secure, HTTP-only
-session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected.
+session cookie after a successful unlock. Sessions last 12 hours or until **Lock app** is selected,
+which revokes the session on the server. Sessions are held in server memory, so restarting the
+server or changing `APP_PASSWORD` signs everyone out.
 `APP_PASSWORD` is required: the server refuses to start without it. To run without the lock in an
 already trusted environment, such as a local machine, set `APP_ALLOW_UNLOCKED=true` instead.
 `LOCAL_AGENT_CONCURRENCY` optionally controls the maximum number of agent child processes. It
@@ -261,7 +263,7 @@ and app version.
 - `GET /settings/development`: development settings interface.
 - `GET /api/auth/status`: app-lock status.
 - `POST /api/auth/unlock`: unlock the app with `APP_PASSWORD`.
-- `POST /api/auth/lock`: clear the current app session.
+- `POST /api/auth/lock`: revoke the current app session and clear its cookie.
 - `POST /api/feedback`: validate feedback, create an Airtable record, and optionally attach the
   current downloadable chat log.
 - `GET /api/health`: public service and agent-credential readiness probe.
