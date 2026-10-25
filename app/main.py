@@ -5,12 +5,14 @@ import hmac
 import base64
 import json
 import logging
+import math
 import os
 import queue
 import re
 import secrets
 import threading
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -73,6 +75,9 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
 SESSION_TTL_SECONDS = 12 * 60 * 60
+UNLOCK_WINDOW_SECONDS = 15 * 60
+MAX_UNLOCK_FAILURES_PER_CLIENT = 5
+MAX_UNLOCK_FAILURES_GLOBAL = 50
 APP_VERSION = "0.3.0"
 MODEL_ID_PATTERN = re.compile(r"^~?[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -142,6 +147,71 @@ def _revoke_session_token(token: str | None) -> None:
 def _request_is_unlocked(request: Request) -> bool:
     password = _app_password()
     return not password or _valid_session_token(request.cookies.get(SESSION_COOKIE), password)
+
+
+class UnlockThrottle:
+    """Sliding-window limit on failed unlock attempts, per client and across all clients."""
+
+    def __init__(self) -> None:
+        self.clock = time.monotonic
+        self._lock = threading.Lock()
+        self._clients: dict[str, deque[float]] = {}
+        self._global: deque[float] = deque()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._clients.clear()
+            self._global.clear()
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - UNLOCK_WINDOW_SECONDS
+        while self._global and self._global[0] <= cutoff:
+            self._global.popleft()
+        for client, attempts in list(self._clients.items()):
+            while attempts and attempts[0] <= cutoff:
+                attempts.popleft()
+            if not attempts:
+                del self._clients[client]
+
+    def acquire(self, client: str) -> tuple[float, int | None]:
+        """Reserve an attempt, counted as a failure until release() is called.
+
+        Returns the reservation time and, when limited, the Retry-After seconds. Reserving
+        before the password check stops concurrent requests from exceeding the limits.
+        """
+        with self._lock:
+            now = self.clock()
+            # Expired entries are dropped on every attempt and the global cap stops new
+            # ones, so the per-client map never holds more clients than the global cap.
+            self._prune(now)
+            attempts = self._clients.get(client, deque())
+            full = [
+                window[0]
+                for window, limit in (
+                    (attempts, MAX_UNLOCK_FAILURES_PER_CLIENT),
+                    (self._global, MAX_UNLOCK_FAILURES_GLOBAL),
+                )
+                if len(window) >= limit
+            ]
+            if full:
+                retry_after = max(full) + UNLOCK_WINDOW_SECONDS - now
+                return now, max(1, math.ceil(retry_after))
+            attempts.append(now)
+            self._clients[client] = attempts
+            self._global.append(now)
+            return now, None
+
+    def release(self, client: str, reserved_at: float) -> None:
+        """Clear the client's failures after a successful unlock."""
+        with self._lock:
+            self._clients.pop(client, None)
+            try:
+                self._global.remove(reserved_at)
+            except ValueError:
+                pass
+
+
+unlock_throttle = UnlockThrottle()
 
 
 @app.middleware("http")
@@ -413,6 +483,18 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
                 "feedback_configured": _feedback_is_configured(),
             }
         )
+    client = request.client.host if request.client else "unknown"
+    reserved_at, retry_after = unlock_throttle.acquire(client)
+    if retry_after is not None:
+        minutes = math.ceil(retry_after / 60)
+        return JSONResponse(
+            status_code=429,
+            content={
+                "detail": "Too many unlock attempts. "
+                f"Try again in {minutes} minute{'' if minutes == 1 else 's'}."
+            },
+            headers={"Cache-Control": "no-store", "Retry-After": str(retry_after)},
+        )
     if not hmac.compare_digest(credentials.password.encode("utf-8"), password.encode("utf-8")):
         return JSONResponse(
             status_code=401,
@@ -420,6 +502,7 @@ def unlock(request: Request, credentials: UnlockRequest) -> JSONResponse:
             headers={"Cache-Control": "no-store"},
         )
 
+    unlock_throttle.release(client, reserved_at)
     expires_at = int(time.time()) + SESSION_TTL_SECONDS
     response = JSONResponse(
         {

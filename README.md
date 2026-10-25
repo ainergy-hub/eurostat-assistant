@@ -69,8 +69,9 @@ with your own values:
 - `OPENROUTER_TITLE_MODEL`: model that writes chat titles. Defaults to `openai/gpt-5.4-nano`.
 - `APP_PASSWORD`: required. Locks the app behind a 12-hour session. **Lock app** ends the session
   on the server. Sessions live in server memory, so a restart or a new password signs everyone
-  out. On a trusted machine, set `APP_ALLOW_UNLOCKED=true` instead. Never do that on a public
-  server.
+  out. After 5 wrong passwords from one address, or 50 from all addresses, within 15 minutes,
+  unlocking is blocked (HTTP 429) until the window passes. On a trusted machine, set
+  `APP_ALLOW_UNLOCKED=true` instead. Never do that on a public server.
 - `LOCAL_AGENT_CONCURRENCY`: how many agent processes run at once. Defaults to `2`.
 - `AIRTABLE_ACCESS_TOKEN`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_ID`: optional. They turn on the
   feedback form.
