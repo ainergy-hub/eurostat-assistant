@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -15,6 +17,7 @@ from app.local_agent import (
     AgentConfig,
     AgentError,
     _child_environment,
+    _stop_process,
     run_eurostat_agent,
 )
 from app.sandbox_agent import EVENT_PREFIX
@@ -95,6 +98,44 @@ class LocalAgentTests(unittest.TestCase):
                         timeout_seconds=0.05,
                     ),
                 )
+
+    @unittest.skipUnless(os.name == "posix", "process groups are POSIX-only")
+    def test_stop_process_kills_helpers_that_outlive_the_leader(self) -> None:
+        # The leader exits on SIGTERM; its helper ignores SIGTERM and must still be killed.
+        script = textwrap.dedent(
+            """
+            import signal, subprocess, sys, time
+            helper = subprocess.Popen([
+                sys.executable, "-c",
+                "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                "print('ready', flush=True); time.sleep(30)",
+            ], stdout=subprocess.PIPE, text=True)
+            helper.stdout.readline()
+            print(helper.pid, flush=True)
+            time.sleep(30)
+            """
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        helper_pid = int(process.stdout.readline())
+        process.stdout.close()
+
+        _stop_process(process)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(helper_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            os.kill(helper_pid, signal.SIGKILL)
+            self.fail("The helper process survived _stop_process.")
 
     @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-openrouter"})
     def test_cancellation_stops_the_child_process(self) -> None:

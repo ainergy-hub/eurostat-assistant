@@ -168,19 +168,28 @@ def _read_stream(
 def _stop_process(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
-    try:
-        if os.name == "posix":
-            os.killpg(process.pid, signal.SIGTERM)
-        else:
-            process.terminate()
-        process.wait(timeout=1)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        if process.poll() is None:
-            if os.name == "posix":
-                os.killpg(process.pid, signal.SIGKILL)
-            else:
-                process.kill()
+    if os.name != "posix":
+        process.terminate()
+        try:
+            process.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            process.kill()
             process.wait()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=1)
+    except subprocess.TimeoutExpired:
+        pass
+    # Kill the whole group even if the leader exited, so helpers that outlive SIGTERM stop too.
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait()
 
 
 def _publish_event(line: str, on_event: Callable[[dict[str, Any]], None] | None) -> None:
