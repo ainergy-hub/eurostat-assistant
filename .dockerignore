@@ -4,12 +4,13 @@
 .env
 .env.*
 !.env.example
-.venv
-__pycache__
+**/.venv
+**/node_modules
+**/__pycache__
 *.py[cod]
 *.log
 .pytest_cache
 .ruff_cache
 .coverage
 htmlcov
-tests
+**/tests

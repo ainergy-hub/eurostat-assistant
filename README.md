@@ -29,18 +29,43 @@ for the Eurostat Data Browser.
 
 It does not join datasets freely, draw maps, or have accounts, sync, rate limiting, or monitoring.
 
+## Repository layout
+
+```text
+backend/                 Python: FastAPI server, agent, skill, and their tests
+  app/                   FastAPI server and agent runtime
+  skill/                 The fetch-eurostat-data Codex skill
+    SKILL.md             Skill instructions, also the agent's system prompt
+    scripts/             eurostat_api.py CLI helper
+    references/          API and chart-selection notes
+    agent_limits.json    Runtime limits shared by the server and the helper
+  tests/                 Python unit tests and prompt regression fixtures
+  pyproject.toml         Python dependencies (uv)
+frontend/                Browser client and its tests
+  static/                HTML, CSS, and JavaScript served at /static
+  tests/                 Node unit tests and the Playwright smoke test
+  package.json           Node test tooling
+run.sh                   Starts the web app locally
+Dockerfile               Container image for deployment
+```
+
+The backend serves the frontend: FastAPI serves `frontend/static/` directly, so there is no
+separate frontend build or server.
+
 ## Use the Codex skill
 
 The skill and helper need no OpenRouter key and no third-party Python packages.
 
 ```bash
 mkdir -p ~/.codex/skills
-cp -R . ~/.codex/skills/fetch-eurostat-data
+cp -R backend/skill ~/.codex/skills/fetch-eurostat-data
 ```
 
-Reload Codex and ask it to use `$fetch-eurostat-data`. Or call the helper directly:
+Reload Codex and ask it to use `$fetch-eurostat-data`. Or call the helper directly from
+`backend/skill/`:
 
 ```bash
+cd backend/skill
 python3 scripts/eurostat_api.py search "population by age country"
 python3 scripts/eurostat_api.py dimensions demo_pjan
 python3 scripts/eurostat_api.py fetch demo_pjan \
@@ -57,11 +82,12 @@ You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), and an
 [OpenRouter](https://openrouter.ai/) API key.
 
 ```bash
-uv sync
+(cd backend && uv sync)
 cp .env.example .env
 ```
 
-Edit `.env` before starting the app. Replace the example API key, model names, and password
+The Python environment lives in `backend/.venv`. Keep `.env` at the repository root; `run.sh`
+reads it from there. Edit `.env` before starting the app. Replace the example API key, model names, and password
 with your own values:
 
 - `OPENROUTER_API_KEY`: required.
@@ -109,8 +135,9 @@ result. The server streams each call to the browser as newline-delimited JSON, v
 result, and the browser renders it as a Vega-Lite chart. The model never writes HTML, JavaScript,
 or Vega-Lite.
 
-Each request gets at most 12 tool calls. All limits live in `agent_limits.json`. The child process
-is not an OS sandbox, so don't add shell or user-code execution without real isolation.
+Each request gets at most 12 tool calls. All limits live in `backend/skill/agent_limits.json`. The
+child process is not an OS sandbox, so don't add shell or user-code execution without real
+isolation.
 
 **Download log** in the investigation header exports a JSON diagnostic log without the data rows.
 Review it before sharing because chat text can still contain reported values.
@@ -121,23 +148,33 @@ response, and `GET /api/health` for a public readiness check.
 
 ## Tests
 
+Backend tests run from `backend/`:
+
 ```bash
+cd backend
 uv sync --frozen
+uv run python -m unittest discover -s tests -v
+uv run python -m tests.prompt_regression replay
+```
+
+Frontend tests run from `frontend/`. The smoke test starts the backend itself, so sync the backend
+first:
+
+```bash
+cd frontend
 npm ci
 npx playwright install chromium
-uv run python -m unittest discover -v
 npm run test:unit
 npm run test:smoke
-uv run python -m tests.prompt_regression replay
 ```
 
 None of these need API keys. They run on recorded fixtures, and the smoke test loads the app in
 headless Chrome.
 
-Prompt regressions are paired files: a scenario in `tests/prompt_scenarios/<id>.json` with prompts
-and expected outcomes, and a cassette in `tests/prompt_cassettes/<id>.json` with recorded
-responses. Record a new scenario against live services, then replay offline. Replace `scenario_id`
-with the scenario's filename without `.json`:
+Prompt regressions are paired files: a scenario in `backend/tests/prompt_scenarios/<id>.json` with
+prompts and expected outcomes, and a cassette in `backend/tests/prompt_cassettes/<id>.json` with
+recorded responses. Record a new scenario against live services, then replay offline. Run these
+from `backend/` and replace `scenario_id` with the scenario's filename without `.json`:
 
 ```bash
 uv run python -m tests.prompt_regression record scenario_id

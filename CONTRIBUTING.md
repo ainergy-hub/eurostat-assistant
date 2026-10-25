@@ -12,23 +12,26 @@ improvements are welcome.
 
 ## Development setup
 
-Follow the setup steps in the [README](README.md): install the Python environment with `uv sync`,
-install the browser test tooling with `npm ci`, copy `.env.example` to `.env`, and start the app
-with `./run.sh`.
+Follow the setup steps in the [README](README.md): install the Python environment with `uv sync`
+in `backend/`, install the browser test tooling with `npm ci` in `frontend/`, copy `.env.example`
+to `.env`, and start the app with `./run.sh`.
 
 ## Checks
 
 Run these before opening a pull request. CI runs the same checks.
 
 ```bash
+cd backend
 uv run python -m unittest discover -s tests
 uv run python -m tests.prompt_regression replay
+
+cd ../frontend
 npm run test:unit
 npm run test:smoke
 ```
 
 Add or update tests for behaviour you change. If you change agent prompts or tools, review the
-prompt regression scenarios in `tests/prompt_scenarios/`. Record new cassettes only when the
+prompt regression scenarios in `backend/tests/prompt_scenarios/`. Record new cassettes only when the
 change needs them, and review their contents before committing.
 
 ## Pull requests

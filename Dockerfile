@@ -8,19 +8,16 @@ ENV PYTHONUNBUFFERED=1 \
     UV_NO_CACHE=1 \
     UV_NO_DEV=1 \
     UV_PYTHON_DOWNLOADS=0 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/backend/.venv/bin:$PATH"
 
-WORKDIR /app
+WORKDIR /app/backend
 
-COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY app ./app
-COPY references ./references
-COPY scripts ./scripts
-COPY static ./static
-COPY SKILL.md ./
-COPY agent_limits.json ./
+COPY backend/app ./app
+COPY backend/skill ./skill
+COPY frontend/static /app/frontend/static
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
