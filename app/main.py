@@ -34,7 +34,15 @@ from .agent_config import (
     TOOL_CALL_LIMITS,
     TOOLS,
 )
-from .local_agent import AgentConfig, AgentError, run_eurostat_agent
+from .local_agent import (
+    AGENT_BUSY_MESSAGE,
+    AgentCancelledError,
+    AgentConfig,
+    AgentError,
+    release_agent_request,
+    run_eurostat_agent,
+    try_admit_agent_request,
+)
 from .title_agent import DEFAULT_TITLE_MODEL, TitleAgentError, generate_chat_title
 
 
@@ -602,6 +610,26 @@ def _agent_config(model: str | None = None) -> AgentConfig:
     )
 
 
+def _admit_agent_request() -> None:
+    """Reject the request before any work starts when running and waiting places are full."""
+    if not try_admit_agent_request():
+        raise HTTPException(status_code=429, detail=AGENT_BUSY_MESSAGE)
+
+
+class _AgentStreamResponse(StreamingResponse):
+    """Cancels the agent when the response ends for any reason, including a client disconnect."""
+
+    def __init__(self, content: Any, cancel_event: threading.Event, **kwargs: Any) -> None:
+        super().__init__(content, **kwargs)
+        self.cancel_event = cancel_event
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.cancel_event.set()
+
+
 def _public_response(result: Any, model: str | None = None) -> ChatResponse:
     return ChatResponse(
         answer=result.answer,
@@ -616,6 +644,7 @@ def _public_response(result: Any, model: str | None = None) -> ChatResponse:
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     agent_config = _agent_config(request.model)
+    _admit_agent_request()
     try:
         result = await anyio.to_thread.run_sync(
             run_eurostat_agent,
@@ -628,6 +657,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
     except AgentError as exc:
         logger.error("Agent request failed: %s", exc)
         raise HTTPException(status_code=502, detail=exc.public_message) from exc
+    finally:
+        release_agent_request()
 
     return _public_response(result, agent_config.model)
 
@@ -645,7 +676,9 @@ async def chat_title(request: ChatTitleRequest) -> ChatTitleResponse:
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     agent_config = _agent_config(request.model)
+    _admit_agent_request()
     event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    cancel_event = threading.Event()
 
     def publish(event: dict[str, Any]) -> None:
         event_queue.put(event)
@@ -659,6 +692,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 agent_config,
                 request.context_result.model_dump(mode="json") if request.context_result else None,
                 on_event=publish,
+                cancel_event=cancel_event,
             )
             publish(
                 {
@@ -666,6 +700,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     "data": _public_response(result, agent_config.model).model_dump(mode="json"),
                 }
             )
+        except AgentCancelledError:
+            logger.info("Agent request cancelled after the client disconnected.")
         except AgentError as exc:
             logger.error("Agent request failed: %s", exc)
             publish({"type": "error", "message": exc.public_message})
@@ -673,19 +709,27 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             logger.exception("Agent request failed unexpectedly.")
             publish({"type": "error", "message": "The agent request failed unexpectedly."})
         finally:
+            release_agent_request()
             event_queue.put(None)
 
     async def events():
-        threading.Thread(target=run_agent, daemon=True).start()
         yield json.dumps({"type": "status", "phase": "started"}) + "\n"
         while True:
-            event = await anyio.to_thread.run_sync(event_queue.get)
+            # Abandon the wait on disconnect so the response can cancel the agent at once.
+            event = await anyio.to_thread.run_sync(event_queue.get, abandon_on_cancel=True)
             if event is None:
                 break
             yield json.dumps(event, ensure_ascii=False) + "\n"
 
-    return StreamingResponse(
+    # The thread owns the admitted place from here and releases it when the agent stops.
+    try:
+        threading.Thread(target=run_agent, daemon=True).start()
+    except BaseException:
+        release_agent_request()
+        raise
+    return _AgentStreamResponse(
         events(),
+        cancel_event,
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",

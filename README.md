@@ -122,6 +122,7 @@ OPENROUTER_MODEL_OPTIONS=provider/default-model,provider/optional-model
 OPENROUTER_TITLE_MODEL=openai/gpt-5.4-nano
 APP_PASSWORD=choose-a-strong-password
 LOCAL_AGENT_CONCURRENCY=2
+LOCAL_AGENT_QUEUE_LIMIT=4
 AIRTABLE_ACCESS_TOKEN=your_airtable_personal_access_token
 AIRTABLE_BASE_ID=app_your_base_id
 AIRTABLE_TABLE_ID=tbl_your_table_id
@@ -137,7 +138,10 @@ session cookie after a successful unlock. Sessions last 12 hours or until **Lock
 `APP_PASSWORD` is required: the server refuses to start without it. To run without the lock in an
 already trusted environment, such as a local machine, set `APP_ALLOW_UNLOCKED=true` instead.
 `LOCAL_AGENT_CONCURRENCY` optionally controls the maximum number of agent child processes. It
-defaults to `2`; additional requests wait for an available slot.
+defaults to `2`; additional requests wait for an available slot. `LOCAL_AGENT_QUEUE_LIMIT`
+optionally caps how many requests may wait and defaults to `4`. When every running and waiting place
+is taken, the server rejects new questions with HTTP 429 and the app asks the user to try again.
+If the browser disconnects from a streamed answer, the server stops that agent's child process.
 
 The three `AIRTABLE_*` variables enable the in-app feedback form. Create a table with these fields:
 
@@ -187,6 +191,7 @@ promoting a deployment.
    OPENROUTER_TITLE_MODEL=openai/gpt-5.4-nano
    APP_PASSWORD=choose-a-strong-password
    LOCAL_AGENT_CONCURRENCY=2
+   LOCAL_AGENT_QUEUE_LIMIT=4
    AIRTABLE_ACCESS_TOKEN=your_airtable_personal_access_token
    AIRTABLE_BASE_ID=app_your_base_id
    AIRTABLE_TABLE_ID=tbl_your_table_id

@@ -20,6 +20,7 @@ DEFAULT_TIMEOUT_SECONDS = 180
 
 
 GENERIC_AGENT_ERROR = "The agent request failed. Try again."
+AGENT_BUSY_MESSAGE = "The assistant is busy with other questions. Try again in a minute."
 
 
 class AgentError(RuntimeError):
@@ -32,6 +33,10 @@ class AgentError(RuntimeError):
     def __init__(self, message: str, public_message: str = GENERIC_AGENT_ERROR) -> None:
         super().__init__(message)
         self.public_message = public_message
+
+
+class AgentCancelledError(AgentError):
+    """Raised when the caller cancelled the request, for example after a client disconnect."""
 
 
 @dataclass(frozen=True)
@@ -59,7 +64,52 @@ def _positive_int_env(name: str, default: int) -> int:
     return max(1, value)
 
 
-_AGENT_SLOTS = threading.BoundedSemaphore(_positive_int_env("LOCAL_AGENT_CONCURRENCY", 2))
+def _non_negative_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+    return max(0, value)
+
+
+_AGENT_CONCURRENCY = _positive_int_env("LOCAL_AGENT_CONCURRENCY", 2)
+_AGENT_SLOTS = threading.BoundedSemaphore(_AGENT_CONCURRENCY)
+# Running plus waiting requests. Requests beyond this are rejected rather than queued.
+_AGENT_REQUESTS = threading.BoundedSemaphore(
+    _AGENT_CONCURRENCY + _non_negative_int_env("LOCAL_AGENT_QUEUE_LIMIT", 4)
+)
+
+
+def try_admit_agent_request() -> bool:
+    """Reserve a running or waiting place without blocking.
+
+    Every successful call must be paired with exactly one ``release_agent_request()``.
+    """
+    return _AGENT_REQUESTS.acquire(blocking=False)
+
+
+def release_agent_request() -> None:
+    _AGENT_REQUESTS.release()
+
+
+def _raise_if_cancelled(cancel_event: threading.Event | None) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise AgentCancelledError("Local agent request was cancelled.")
+
+
+def _acquire_agent_slot(timeout_seconds: float, cancel_event: threading.Event | None) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        _raise_if_cancelled(cancel_event)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            message = "Local agent capacity is busy. Try the request again shortly."
+            raise AgentError(message, message)
+        if _AGENT_SLOTS.acquire(timeout=min(0.25, remaining)):
+            if cancel_event is None or not cancel_event.is_set():
+                return
+            # Cancelled while waiting: hand the slot back and raise on the next pass.
+            _AGENT_SLOTS.release()
 
 
 def _require_env(name: str) -> str:
@@ -154,6 +204,7 @@ def _run_process(
     config: AgentConfig,
     openrouter_api_key: str,
     on_event: Callable[[dict[str, Any]], None] | None,
+    cancel_event: threading.Event | None = None,
 ) -> str:
     with tempfile.TemporaryDirectory(prefix="eurostat-agent-") as temporary_directory:
         temporary_path = Path(temporary_directory)
@@ -202,6 +253,8 @@ def _run_process(
         stdout_complete = False
         try:
             while not stdout_complete:
+                # A cancelled request leaves the loop here; the finally block stops the child.
+                _raise_if_cancelled(cancel_event)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise subprocess.TimeoutExpired(process.args, config.timeout_seconds)
@@ -247,6 +300,7 @@ def run_eurostat_agent(
     config: AgentConfig,
     context_result: dict[str, Any] | None = None,
     on_event: Callable[[dict[str, Any]], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> AgentResult:
     openrouter_api_key = _require_env("OPENROUTER_API_KEY")
     if not config.runner_path.is_file():
@@ -262,11 +316,9 @@ def run_eurostat_agent(
         "model": config.model,
     }
 
-    if not _AGENT_SLOTS.acquire(timeout=config.timeout_seconds):
-        message = "Local agent capacity is busy. Try the request again shortly."
-        raise AgentError(message, message)
+    _acquire_agent_slot(config.timeout_seconds, cancel_event)
     try:
-        stdout = _run_process(payload, config, openrouter_api_key, on_event)
+        stdout = _run_process(payload, config, openrouter_api_key, on_event, cancel_event)
     finally:
         _AGENT_SLOTS.release()
 
