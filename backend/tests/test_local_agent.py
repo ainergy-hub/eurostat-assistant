@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 import os
+import signal
+import subprocess
+import sys
 import tempfile
 import textwrap
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app.local_agent import AgentConfig, AgentError, _child_environment, run_eurostat_agent
+from app.local_agent import (
+    AgentCancelledError,
+    AgentConfig,
+    AgentError,
+    _child_environment,
+    _stop_process,
+    run_eurostat_agent,
+)
 from app.sandbox_agent import EVENT_PREFIX
 
 
@@ -86,6 +98,106 @@ class LocalAgentTests(unittest.TestCase):
                         timeout_seconds=0.05,
                     ),
                 )
+
+    @unittest.skipUnless(os.name == "posix", "process groups are POSIX-only")
+    def test_stop_process_kills_helpers_that_outlive_the_leader(self) -> None:
+        # The leader exits on SIGTERM; its helper ignores SIGTERM and must still be killed.
+        script = textwrap.dedent(
+            """
+            import signal, subprocess, sys, time
+            helper = subprocess.Popen([
+                sys.executable, "-c",
+                "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                "print('ready', flush=True); time.sleep(30)",
+            ], stdout=subprocess.PIPE, text=True)
+            helper.stdout.readline()
+            print(helper.pid, flush=True)
+            time.sleep(30)
+            """
+        )
+        process = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        helper_pid = int(process.stdout.readline())
+        process.stdout.close()
+
+        _stop_process(process)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(helper_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        else:
+            os.kill(helper_pid, signal.SIGKILL)
+            self.fail("The helper process survived _stop_process.")
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-openrouter"})
+    def test_cancellation_stops_the_child_process(self) -> None:
+        cancel_event = threading.Event()
+        processes: list[subprocess.Popen[str]] = []
+        start_process = subprocess.Popen
+
+        def start_then_cancel(*args, **kwargs):
+            process = start_process(*args, **kwargs)
+            processes.append(process)
+            cancel_event.set()
+            return process
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            runner_path = Path(temporary_directory) / "runner.py"
+            runner_path.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
+
+            started_at = time.monotonic()
+            with (
+                patch("app.local_agent.subprocess.Popen", side_effect=start_then_cancel),
+                self.assertRaises(AgentCancelledError),
+            ):
+                run_eurostat_agent(
+                    "Test cancellation.",
+                    [],
+                    "",
+                    AgentConfig(model="test/model", runner_path=runner_path, timeout_seconds=10),
+                    cancel_event=cancel_event,
+                )
+
+        self.assertLess(time.monotonic() - started_at, 5)
+        self.assertEqual(len(processes), 1)
+        self.assertIsNotNone(processes[0].poll())
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-openrouter"})
+    def test_cancellation_while_waiting_for_a_slot_gives_up_without_starting(self) -> None:
+        slots = threading.BoundedSemaphore(1)
+        slots.acquire()
+        cancel_event = threading.Event()
+        threading.Timer(0.1, cancel_event.set).start()
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            runner_path = Path(temporary_directory) / "runner.py"
+            runner_path.write_text("", encoding="utf-8")
+
+            with (
+                patch("app.local_agent._AGENT_SLOTS", slots),
+                patch("app.local_agent.subprocess.Popen") as start_process,
+                self.assertRaises(AgentCancelledError),
+            ):
+                run_eurostat_agent(
+                    "Test cancellation.",
+                    [],
+                    "",
+                    AgentConfig(model="test/model", runner_path=runner_path, timeout_seconds=10),
+                    cancel_event=cancel_event,
+                )
+
+        start_process.assert_not_called()
+        # The busy slot still belongs to its holder.
+        self.assertFalse(slots.acquire(blocking=False))
+        slots.release()
 
 
 if __name__ == "__main__":

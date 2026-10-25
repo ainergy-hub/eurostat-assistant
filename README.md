@@ -90,6 +90,7 @@ All settings live in `.env` at the root of the repository.
 | `APP_PASSWORD` | Yes | Password that protects the app. See below. |
 | `OPENROUTER_TITLE_MODEL` | No | Model that names your chats. Defaults to `openai/gpt-5.4-nano`. |
 | `LOCAL_AGENT_CONCURRENCY` | No | How many questions can run at once. Defaults to `2`. |
+| `LOCAL_AGENT_QUEUE_LIMIT` | No | How many more questions can wait for a free slot. Defaults to `4`. Beyond that the app asks the user to try again. |
 | `AIRTABLE_*` | No | Turns on the feedback form. See [Feedback form](#optional-feedback-form). |
 | `HOST`, `PORT` | No | Where the server listens. Defaults to `127.0.0.1:8000`. |
 
