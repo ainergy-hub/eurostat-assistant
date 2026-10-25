@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import unittest
 from argparse import Namespace
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
-from scripts.eurostat_api import (
+# The skill lives in the top-level skill/ folder, outside backend/.
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+from skill.scripts.eurostat_api import (
     MAX_ESTIMATED_CELLS,
     MAX_RESPONSE_BYTES,
     build_sdmx_constraint_url,
@@ -131,11 +136,11 @@ class EurostatApiTests(unittest.TestCase):
         stdout = io.StringIO()
         with (
             patch(
-                "scripts.eurostat_api.get_text",
+                "skill.scripts.eurostat_api.get_text",
                 side_effect=[SDMX_DATAFLOW_XML, SDMX_CONSTRAINT_XML],
             ) as get_text_mock,
             patch(
-                "scripts.eurostat_api.get_json",
+                "skill.scripts.eurostat_api.get_json",
                 side_effect=AssertionError("observation endpoint must not be used"),
             ),
             redirect_stdout(stdout),
@@ -168,8 +173,8 @@ class EurostatApiTests(unittest.TestCase):
         }
         stdout = io.StringIO()
         with (
-            patch("scripts.eurostat_api.get_text", return_value="not XML"),
-            patch("scripts.eurostat_api.get_json", return_value=statistics_response),
+            patch("skill.scripts.eurostat_api.get_text", return_value="not XML"),
+            patch("skill.scripts.eurostat_api.get_json", return_value=statistics_response),
             redirect_stdout(stdout),
         ):
             dimensions("demo_pjan")
@@ -194,7 +199,7 @@ class EurostatApiTests(unittest.TestCase):
             def __exit__(self, *_args):
                 return False
 
-        with patch("scripts.eurostat_api.urllib.request.urlopen", return_value=Response()):
+        with patch("skill.scripts.eurostat_api.urllib.request.urlopen", return_value=Response()):
             with self.assertRaisesRegex(SystemExit, "too large"):
                 get_text("https://example.test/data")
 
@@ -208,7 +213,7 @@ class EurostatApiTests(unittest.TestCase):
             output="json",
         )
 
-        with patch("scripts.eurostat_api.get_json") as get_json_mock:
+        with patch("skill.scripts.eurostat_api.get_json") as get_json_mock:
             with self.assertRaisesRegex(SystemExit, "bounded time filter"):
                 fetch(arguments)
 
@@ -226,7 +231,7 @@ class EurostatApiTests(unittest.TestCase):
             )
 
             with self.subTest(param=param, time=time):
-                with patch("scripts.eurostat_api.get_json") as get_json_mock:
+                with patch("skill.scripts.eurostat_api.get_json") as get_json_mock:
                     with self.assertRaisesRegex(SystemExit, "mutually exclusive"):
                         fetch(arguments)
 

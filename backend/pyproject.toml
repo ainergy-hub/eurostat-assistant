@@ -5,7 +5,7 @@ description = "Reference web app for asking sourced questions of official Eurost
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115.0",
-  "psycopg[binary]==3.3.4",
+  "psycopg[binary]==3.3.6",
   "pydantic>=2.8.0",
   "uvicorn[standard]>=0.30.0",
 ]
