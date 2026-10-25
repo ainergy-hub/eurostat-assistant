@@ -122,15 +122,15 @@ Copy the skill into your Codex skills folder:
 
 ```bash
 mkdir -p ~/.codex/skills
-cp -R backend/skill ~/.codex/skills/fetch-eurostat-data
+cp -R skill ~/.codex/skills/fetch-eurostat-data
 ```
 
 Reload Codex and ask it to use `$fetch-eurostat-data`.
 
-You can also run the helper yourself from `backend/skill/`:
+You can also run the helper yourself from `skill/`:
 
 ```bash
-cd backend/skill
+cd skill
 
 # Find datasets
 python3 scripts/eurostat_api.py search "population by age country"
@@ -157,7 +157,7 @@ and returns at most 500 rows unless you pass `--max-rows`.
 5. The server checks the final result, and the browser draws the chart and table.
 
 The model only chooses data and chart settings. It never writes HTML or code that runs in your
-browser. All limits are in `backend/skill/agent_limits.json`.
+browser. All limits are in `skill/agent_limits.json`.
 
 The agent runs in a separate process but not in a full sandbox. Don't give it shell access or let it
 run user code without proper isolation.
@@ -172,13 +172,13 @@ API endpoints: `POST /api/chat/stream` (streamed answer), `POST /api/chat` (sing
 ## Development
 
 ```text
-backend/                 Python: FastAPI server, agent, skill, and their tests
+skill/                   The fetch-eurostat-data Codex skill, also loaded by the server
+  SKILL.md               Skill instructions, also the agent's system prompt
+  scripts/               eurostat_api.py CLI helper
+  references/            API and chart-selection notes
+  agent_limits.json      Runtime limits shared by the server and the helper
+backend/                 Python: FastAPI server, agent, and their tests
   app/                   FastAPI server and agent runtime
-  skill/                 The fetch-eurostat-data Codex skill
-    SKILL.md             Skill instructions, also the agent's system prompt
-    scripts/             eurostat_api.py CLI helper
-    references/          API and chart-selection notes
-    agent_limits.json    Runtime limits shared by the server and the helper
   tests/                 Python unit tests and prompt regression fixtures
   pyproject.toml         Python dependencies (uv)
 frontend/                Browser client and its tests
@@ -189,7 +189,8 @@ run.sh                   Starts the web app locally
 Dockerfile               Container image for deployment
 ```
 
-There is no separate frontend build: the backend serves `frontend/static/` as is.
+There is no separate frontend build: the backend serves `frontend/static/` as is. Set
+`EUROSTAT_STATIC_DIR` to serve the browser files from another folder.
 
 Run the tests. None of them need API keys.
 

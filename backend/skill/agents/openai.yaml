@@ -1,4 +1,0 @@
-interface:
-  display_name: "Fetch Eurostat Data"
-  short_description: "Find, fetch, and chart Eurostat statistics"
-  default_prompt: "Use $fetch-eurostat-data to find the relevant Eurostat dataset and answer my question with a suitable chart."

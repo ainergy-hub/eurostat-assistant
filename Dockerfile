@@ -16,7 +16,7 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY backend/app ./app
-COPY backend/skill ./skill
+COPY skill /app/skill
 COPY frontend/static /app/frontend/static
 
 RUN useradd --create-home --uid 10001 appuser
