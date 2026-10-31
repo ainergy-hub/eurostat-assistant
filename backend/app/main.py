@@ -70,7 +70,8 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Eurostat Assistant", lifespan=lifespan)
+# See README.md before re-enabling browser API docs under the content security policy.
+app = FastAPI(title="Eurostat Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"

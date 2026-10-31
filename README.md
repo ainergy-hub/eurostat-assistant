@@ -174,6 +174,13 @@ model, tools, and limits in use.
 API endpoints: `POST /api/chat/stream` (streamed answer), `POST /api/chat` (single response), and
 `GET /api/health` (readiness check).
 
+The browser API documentation pages at `/docs` and `/redoc` are disabled for now. Endpoint
+definitions remain in the repository, and the OpenAPI schema is available at `/openapi.json`.
+To deploy documentation later, self-host the Swagger UI or ReDoc assets and use a CSP nonce or
+hash for any inline initialization scripts before re-enabling the documentation routes in
+`backend/app/main.py`. FastAPI's default documentation pages use external CDN scripts that the
+current Content-Security-Policy blocks. Verify the documentation renders under that policy.
+
 ## Development
 
 ```text
