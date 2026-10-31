@@ -62,7 +62,7 @@ You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), and an OpenRout
 It works best for focused questions that one Eurostat dataset can answer. For example:
 
 - *Compare the population of Germany, France, and Italy over the latest 5 years.*
-- *How has annual inflation changed in the EU since 2020?*
+- *Rank all reporting countries by the share of renewable energy in gross electricity consumption, highest first, for the latest available year. Use Eurostat dataset nrg_ind_ren, indicator REN_ELC, and unit PC. Exclude regional aggregates and countries without data for that year. Show the year, percentage shares, and a horizontal bar chart.*
 - *Compare the unemployment rate in Spain and Portugal over the latest 8 years.*
 
 Every answer includes:
