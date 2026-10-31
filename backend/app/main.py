@@ -37,7 +37,15 @@ from .agent_config import (
     TOOL_CALL_LIMITS,
     TOOLS,
 )
-from .local_agent import AgentConfig, AgentError, run_eurostat_agent
+from .local_agent import (
+    AGENT_BUSY_MESSAGE,
+    AgentCancelledError,
+    AgentConfig,
+    AgentError,
+    release_agent_request,
+    run_eurostat_agent,
+    try_admit_agent_request,
+)
 from .title_agent import DEFAULT_TITLE_MODEL, TitleAgentError, generate_chat_title
 
 
@@ -70,7 +78,8 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Eurostat Assistant", lifespan=lifespan)
+# See README.md before re-enabling browser API docs under the content security policy.
+app = FastAPI(title="Eurostat Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
@@ -160,6 +169,30 @@ def _revoke_session_token(token: str | None) -> None:
 def _request_is_unlocked(request: Request) -> bool:
     password = _app_password()
     return not password or _valid_session_token(request.cookies.get(SESSION_COOKIE), password)
+
+
+# Every script, style, and font is served from /static, so the browser can refuse anything else.
+# Inline styles stay allowed because Vega writes style attributes on the SVGs it renders.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    )
+)
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 
 
 class UnlockThrottle:
@@ -285,6 +318,15 @@ async def require_app_unlock(request: Request, call_next):
         content={"detail": "App is locked. Enter the app password to continue."},
         headers={"Cache-Control": "no-store"},
     )
+
+
+# Registered after require_app_unlock so it wraps it and also covers locked 401 responses.
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 def _model_name() -> str:
@@ -769,6 +811,26 @@ def _agent_config(model: str | None = None) -> AgentConfig:
     )
 
 
+def _admit_agent_request() -> None:
+    """Reject the request before any work starts when running and waiting places are full."""
+    if not try_admit_agent_request():
+        raise HTTPException(status_code=429, detail=AGENT_BUSY_MESSAGE)
+
+
+class _AgentStreamResponse(StreamingResponse):
+    """Cancels the agent when the response ends for any reason, including a client disconnect."""
+
+    def __init__(self, content: Any, cancel_event: threading.Event, **kwargs: Any) -> None:
+        super().__init__(content, **kwargs)
+        self.cancel_event = cancel_event
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.cancel_event.set()
+
+
 def _public_response(result: Any, model: str | None = None) -> ChatResponse:
     return ChatResponse(
         answer=result.answer,
@@ -783,6 +845,7 @@ def _public_response(result: Any, model: str | None = None) -> ChatResponse:
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     agent_config = _agent_config(request.model)
+    _admit_agent_request()
     try:
         result = await anyio.to_thread.run_sync(
             run_eurostat_agent,
@@ -795,6 +858,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
     except AgentError as exc:
         logger.error("Agent request failed: %s", exc)
         raise HTTPException(status_code=502, detail=exc.public_message) from exc
+    finally:
+        release_agent_request()
 
     return _public_response(result, agent_config.model)
 
@@ -812,7 +877,9 @@ async def chat_title(request: ChatTitleRequest) -> ChatTitleResponse:
 @app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     agent_config = _agent_config(request.model)
+    _admit_agent_request()
     event_queue: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    cancel_event = threading.Event()
 
     def publish(event: dict[str, Any]) -> None:
         event_queue.put(event)
@@ -826,6 +893,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                 agent_config,
                 request.context_result.model_dump(mode="json") if request.context_result else None,
                 on_event=publish,
+                cancel_event=cancel_event,
             )
             publish(
                 {
@@ -833,6 +901,8 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
                     "data": _public_response(result, agent_config.model).model_dump(mode="json"),
                 }
             )
+        except AgentCancelledError:
+            logger.info("Agent request cancelled after the client disconnected.")
         except AgentError as exc:
             logger.error("Agent request failed: %s", exc)
             publish({"type": "error", "message": exc.public_message})
@@ -840,19 +910,27 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             logger.exception("Agent request failed unexpectedly.")
             publish({"type": "error", "message": "The agent request failed unexpectedly."})
         finally:
+            release_agent_request()
             event_queue.put(None)
 
     async def events():
-        threading.Thread(target=run_agent, daemon=True).start()
         yield json.dumps({"type": "status", "phase": "started"}) + "\n"
         while True:
-            event = await anyio.to_thread.run_sync(event_queue.get)
+            # Abandon the wait on disconnect so the response can cancel the agent at once.
+            event = await anyio.to_thread.run_sync(event_queue.get, abandon_on_cancel=True)
             if event is None:
                 break
             yield json.dumps(event, ensure_ascii=False) + "\n"
 
-    return StreamingResponse(
+    # The thread owns the admitted place from here and releases it when the agent stops.
+    try:
+        threading.Thread(target=run_agent, daemon=True).start()
+    except BaseException:
+        release_agent_request()
+        raise
+    return _AgentStreamResponse(
         events(),
+        cancel_event,
         media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",

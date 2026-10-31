@@ -9,7 +9,7 @@ each works without the other:
 - A reference web app where you chat with an agent. It answers with sources, a chart, a filterable
   table, and a CSV download.
 
-It works best for focused questions that one Eurostat dataset can answer. 
+It works best for focused questions that one Eurostat dataset can answer.
 **Limitations:** it does not freely combine datasets, draw maps, or have user accounts. It is not a
 replacement for the [Eurostat Data Browser](https://ec.europa.eu/eurostat/databrowser/).
 
@@ -90,6 +90,7 @@ All settings live in `.env` at the root of the repository.
 | `APP_PASSWORD` | Yes | Password that protects the app. See below. |
 | `OPENROUTER_TITLE_MODEL` | No | Model that names your chats. Defaults to `openai/gpt-5.4-nano`. |
 | `LOCAL_AGENT_CONCURRENCY` | No | How many questions can run at once. Defaults to `2`. |
+| `LOCAL_AGENT_QUEUE_LIMIT` | No | How many more questions can wait for a free slot. Defaults to `4`. Beyond that the app asks the user to try again. |
 | `AIRTABLE_*` | No | Turns on the feedback form. See [Feedback form](#optional-feedback-form). |
 | `HOST`, `PORT` | No | Where the server listens. Defaults to `127.0.0.1:8000`. |
 
@@ -159,6 +160,11 @@ and returns at most 500 rows unless you pass `--max-rows`.
 The model only chooses data and chart settings. It never writes HTML or code that runs in your
 browser. All limits are in `skill/agent_limits.json`.
 
+Vega, Vega-Lite, Vega-Embed, and the IBM Plex fonts are served from
+`frontend/static/vendor/`. The browser makes no third-party asset requests. Every response sets a
+Content-Security-Policy restricting scripts, styles, fonts, and connections to the app's origin.
+Vega expressions use `vega-interpreter`, so the policy does not require `'unsafe-eval'`.
+
 The agent runs in a separate process but not in a full sandbox. Don't give it shell access or let it
 run user code without proper isolation.
 
@@ -168,6 +174,13 @@ model, tools, and limits in use.
 
 API endpoints: `POST /api/chat/stream` (streamed answer), `POST /api/chat` (single response), and
 `GET /api/health` (readiness check).
+
+The browser API documentation pages at `/docs` and `/redoc` are disabled for now. Endpoint
+definitions remain in the repository, and the OpenAPI schema is available at `/openapi.json`.
+To deploy documentation later, self-host the Swagger UI or ReDoc assets and use a CSP nonce or
+hash for any inline initialization scripts before re-enabling the documentation routes in
+`backend/app/main.py`. FastAPI's default documentation pages use external CDN scripts that the
+current Content-Security-Policy blocks. Verify the documentation renders under that policy.
 
 ## Development
 
