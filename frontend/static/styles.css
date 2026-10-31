@@ -339,7 +339,8 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-button {
+button,
+.github-link {
   border-radius: var(--radius-control);
 }
 
@@ -840,6 +841,7 @@ th {
   text-transform: uppercase;
 }
 
+.github-link,
 .theme-toggle-button,
 .info-button,
 .development-button,
@@ -873,6 +875,7 @@ th {
   white-space: nowrap;
 }
 
+.github-link:hover,
 .theme-toggle-button:hover,
 .info-button:hover,
 .development-button:hover,
@@ -882,6 +885,7 @@ th {
   border-color: var(--color-text-primary);
 }
 
+.github-link,
 .theme-toggle-button,
 .info-button,
 .development-button,
@@ -921,6 +925,15 @@ th {
   stroke-linejoin: miter;
   stroke-width: 1.8;
   vector-effect: non-scaling-stroke;
+}
+
+.github-link {
+  text-decoration: none;
+}
+
+.github-link .topbar-icon {
+  fill: currentColor;
+  stroke: none;
 }
 
 .theme-toggle-icon .topbar-icon {
@@ -3067,6 +3080,7 @@ footer a:hover {
   .sidebar-close,
   .menu-button,
   .dialog-close,
+  .github-link,
   .theme-toggle-button,
   .info-button,
   .development-button,
