@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;600;700&display=swap"
     />
     <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/styles.css?v=20260917-1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20261031-1" />
   </head>
   <body>
     <section class="app-lock" id="app-lock" aria-labelledby="app-lock-title">
@@ -383,6 +383,13 @@
         <section class="conversation" id="chat" aria-live="polite" data-chat-view></section>
 
         <section class="ask-panel" aria-label="Ask Eurostat" data-chat-view>
+          <div class="chat-length-warning" id="chat-length-warning" role="status" hidden>
+            <p>This conversation is getting long or contains a lot of data. Start a new chat if you're moving to a different question. This chat will stay in your history.</p>
+            <div class="chat-length-actions">
+              <button type="button" id="chat-length-new-chat">New chat</button>
+              <button type="button" id="chat-length-dismiss" aria-label="Dismiss conversation length suggestion">Dismiss</button>
+            </div>
+          </div>
           <form class="composer" id="composer">
             <label class="sr-only" for="prompt">Investigation query</label>
             <textarea
@@ -619,6 +626,6 @@
     <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
-    <script src="/static/app.js?v=20261022-1" type="module"></script>
+    <script src="/static/app.js?v=20261031-1" type="module"></script>
   </body>
 </html>

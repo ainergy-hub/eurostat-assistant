@@ -10,6 +10,7 @@ import {
   latestDataResult,
   latestUnansweredFailure,
   recentHistory,
+  shouldSuggestNewChat,
   shortChatTitle,
   titleFromPrompt,
 } from "../static/chat_state.js";
@@ -163,3 +164,14 @@ assert.equal(log.investigation.events[0].type, "request_error");
 assert.equal(log.investigation.events[0].model, "openai/gpt-5.6-luna-pro");
 
 console.log("chat state tests passed");
+
+assert.equal(shouldSuggestNewChat([]), false);
+assert.equal(shouldSuggestNewChat(Array.from({ length: 9 }, () => ({ role: "user", content: "Question" }))), false);
+assert.equal(shouldSuggestNewChat(Array.from({ length: 10 }, () => ({ role: "user", content: "Question" }))), true);
+// UTF-8 bytes, rather than JavaScript string length, determine the API body size.
+assert.equal(shouldSuggestNewChat([{ role: "assistant", content: "Result", result: {
+  rows: [{ label: "界".repeat(1_000_000) }],
+} }]), true);
+assert.equal(shouldSuggestNewChat([{ role: "assistant", content: "Result", result: {
+  rows: [{ label: "small table" }],
+} }]), false);

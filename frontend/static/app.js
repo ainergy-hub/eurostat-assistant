@@ -4,9 +4,10 @@ import {
   latestDataResult,
   latestUnansweredFailure,
   recentHistory,
+  shouldSuggestNewChat,
   shortChatTitle,
   titleFromPrompt,
-} from "./chat_state.js?v=20260816-2";
+} from "./chat_state.js?v=20261031-1";
 import {
   ChatHistoryStore,
   requestPersistentStorage,
@@ -51,6 +52,16 @@ const appUnlockButton = document.querySelector("#app-unlock-button");
 const lockAppButton = document.querySelector("#lock-app");
 const chat = document.querySelector("#chat");
 const composer = document.querySelector("#composer");
+const chatLengthWarning = document.querySelector("#chat-length-warning");
+const dismissedChatLengthWarnings = new Set();
+
+function renderChatLengthWarning() {
+  const record = activeChat();
+  chatLengthWarning.hidden = !record
+    || dismissedChatLengthWarnings.has(record.id)
+    || !shouldSuggestNewChat(record.messages);
+}
+
 const promptInput = document.querySelector("#prompt");
 const sendButton = document.querySelector("#send");
 const statusBadge = document.querySelector("#status");
@@ -885,6 +896,7 @@ function renderWorkspace() {
   downloadChatLogButton.title = record.messages.length
     ? `Download log for ${recordTitleLabel(record)}`
     : "Download log available after the first message";
+  renderChatLengthWarning();
   const summary = buildContextSummary(record.messages);
   contextStatus.hidden = !summary;
   contextStatus.title = summary
@@ -1140,6 +1152,15 @@ promptInput.addEventListener("keydown", (event) => {
     event.preventDefault();
     composer.requestSubmit();
   }
+});
+
+document.querySelector("#chat-length-new-chat").addEventListener("click", () => {
+  void createChat();
+});
+document.querySelector("#chat-length-dismiss").addEventListener("click", () => {
+  const record = activeChat();
+  if (record) dismissedChatLengthWarnings.add(record.id);
+  chatLengthWarning.hidden = true;
 });
 
 newChatButton.addEventListener("click", () => {

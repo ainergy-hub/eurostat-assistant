@@ -181,3 +181,14 @@ export function buildChatLog(
     },
   };
 }
+
+// Leave room below the 4 MB API limit for the next prompt and model selection.
+export function shouldSuggestNewChat(messages) {
+  if (messages.filter((message) => message.role === "user").length >= 10) return true;
+  const context = {
+    history: recentHistory(messages),
+    summary: buildContextSummary(messages),
+    context_result: latestDataResult(messages),
+  };
+  return new TextEncoder().encode(JSON.stringify(context)).byteLength >= 3_000_000;
+}
