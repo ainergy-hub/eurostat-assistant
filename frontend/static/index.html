@@ -11,12 +11,7 @@
     <meta name="theme-color" content="#f5f5f0" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141412" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;600;700&display=swap"
-    />
+    <link rel="stylesheet" href="/static/vendor/fonts/fonts.css" />
     <script src="/static/theme.js"></script>
     <link rel="stylesheet" href="/static/styles.css?v=20260917-1" />
   </head>
@@ -616,9 +611,10 @@
       </article>
     </template>
 
-    <script src="https://cdn.jsdelivr.net/npm/vega@6.2.0/build/vega.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vega-embed@7.1.0/build/vega-embed.min.js"></script>
+    <script src="/static/vendor/vega/vega.min.js"></script>
+    <script src="/static/vendor/vega/vega-interpreter.js"></script>
+    <script src="/static/vendor/vega/vega-lite.min.js"></script>
+    <script src="/static/vendor/vega/vega-embed.min.js"></script>
     <script src="/static/app.js?v=20261022-1" type="module"></script>
   </body>
 </html>

@@ -768,6 +768,10 @@ export async function renderVegaLiteChart(container, rows, chartSpec, embed = gl
     const spec = buildVegaLiteSpec(rows, chartSpec, chartTheme());
     if (!spec) throw new Error("The chart has no valid numeric observations.");
     const result = await embed(container, spec, {
+      // Interpret Vega expressions instead of compiling them with new Function(), so charts
+      // render under the app's Content-Security-Policy without 'unsafe-eval'.
+      ast: true,
+      expr: globalThis.vegaInterpreter?.expressionInterpreter,
       actions: false,
       defaultStyle: true,
       mode: "vega-lite",

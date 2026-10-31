@@ -30,10 +30,17 @@ TOC_URL = f"{BASE}/catalogue/toc/txt?lang=en"
 DATA_URL = f"{BASE}/statistics/1.0/data"
 SDMX_DATAFLOW_URL = f"{BASE}/sdmx/2.1/dataflow"
 SDMX_CONSTRAINT_URL = f"{BASE}/sdmx/3.0/structure/dataconstraint"
-LIMITS_PATH = Path(__file__).resolve().parent / "agent_limits.json"
-if not LIMITS_PATH.exists():
-    LIMITS_PATH = Path(__file__).resolve().parent.parent / "agent_limits.json"
-LIMITS = json.loads(LIMITS_PATH.read_text(encoding="utf-8"))
+# The web app's agent_limits.json overrides these when the skill runs inside the repository.
+LIMITS = {
+    "max_eurostat_response_bytes": 8_000_000,
+    "max_estimated_cells": 50_000,
+    "max_time_periods": 20,
+}
+for parent in Path(__file__).resolve().parents[:3]:
+    LIMITS_PATH = parent / "agent_limits.json"
+    if LIMITS_PATH.exists():
+        LIMITS.update(json.loads(LIMITS_PATH.read_text(encoding="utf-8")))
+        break
 MAX_RESPONSE_BYTES = int(LIMITS["max_eurostat_response_bytes"])
 MAX_ESTIMATED_CELLS = int(LIMITS["max_estimated_cells"])
 MAX_TIME_PERIODS = int(LIMITS["max_time_periods"])

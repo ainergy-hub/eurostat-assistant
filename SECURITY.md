@@ -13,8 +13,8 @@ acknowledge reports within five working days and will keep you informed while we
 
 In scope:
 
-- the FastAPI server in `app/`, including the app lock, session handling, and request limits;
-- the browser client in `static/`;
+- the FastAPI server in `backend/app/`, including the app lock, session handling, and request limits;
+- the browser client in `frontend/static/`;
 - the agent runner and its handling of model output and Eurostat responses.
 
 Out of scope:

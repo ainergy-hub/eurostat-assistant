@@ -48,6 +48,36 @@ Suggested entry shape:
   cap, and pruning. Docker deployments behind a reverse proxy must set `FORWARDED_ALLOW_IPS` to
   the proxy's address, or all users share one per-client limit.
 
+### Self-host browser assets and add a Content-Security-Policy
+
+- **Changed:** Vega, Vega-Lite, Vega-Embed, and the IBM Plex fonts now ship in `frontend/static/vendor/`
+  instead of loading from jsDelivr and Google Fonts. Every response sets a Content-Security-Policy
+  restricting scripts, styles, fonts, and connections to `'self'`, plus `nosniff`,
+  `X-Frame-Options: DENY`, and a referrer policy. Charts use `vega-interpreter` so the policy needs
+  no `'unsafe-eval'`.
+- **Reasoning:** The CDN scripts had no integrity hashes, so a compromised CDN or package could read
+  every chat stored in IndexedDB and call the API with the user's session. Google Fonts also sent
+  every visitor's IP address to Google, which German courts have treated as a GDPR violation.
+- **Validation/impact:** A new smoke test renders a chart under the production CSP and fails on any
+  console error or external request. Line, area, bar (grouped, normalized, top-N), heatmap,
+  histogram, and box-plot charts were also checked manually with tooltips and legend highlighting.
+  `style-src` still allows `'unsafe-inline'` because Vega writes inline styles.
+
+### Split the repository into backend and frontend folders
+
+- **Changed:** Python code moved to `backend/` (the FastAPI server in `backend/app/`, Python tests
+  and prompt regression fixtures in `backend/tests/`, `pyproject.toml` and `uv.lock`). The Codex
+  skill stays in the top-level `skill/` folder, and `agent_limits.json` moved into it. Browser code moved to `frontend/static/`, with its Node tests, `package.json`,
+  and Playwright config in `frontend/`. `run.sh`, the Dockerfile, CI, and the skill install
+  instructions follow the new paths. The URL layout (`/static/...`) is unchanged.
+- **Reasoning:** The root mixed server code, browser code, skill files, and two toolchains, so it
+  was hard to see what belonged to which part. The skill stays at the top level because people
+  install it into Codex without the backend; the server only reads it.
+- **Validation/impact:** All Python tests, prompt replays, Node unit tests, and the Playwright smoke
+  test pass from the new folders. Existing checkouts need `uv sync` in `backend/` (the virtual
+  environment now lives at `backend/.venv`) and `npm ci` in `frontend/`. The local `.env` stays at
+  the repository root.
+
 ### Neutralise formulas in CSV exports
 
 - **Changed:** CSV export now prefixes text cells starting with `=`, `+`, `-`, `@`, tab, or carriage
