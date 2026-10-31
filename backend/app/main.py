@@ -78,7 +78,8 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Eurostat Assistant", lifespan=lifespan)
+# See README.md before re-enabling browser API docs under the content security policy.
+app = FastAPI(title="Eurostat Assistant", lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 SESSION_COOKIE = "eurostat_lens_session"
@@ -155,6 +156,30 @@ def _revoke_session_token(token: str | None) -> None:
 def _request_is_unlocked(request: Request) -> bool:
     password = _app_password()
     return not password or _valid_session_token(request.cookies.get(SESSION_COOKIE), password)
+
+
+# Every script, style, and font is served from /static, so the browser can refuse anything else.
+# Inline styles stay allowed because Vega writes style attributes on the SVGs it renders.
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self'",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    )
+)
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 
 
 class UnlockThrottle:
@@ -237,6 +262,15 @@ async def require_app_unlock(request: Request, call_next):
         content={"detail": "App is locked. Enter the app password to continue."},
         headers={"Cache-Control": "no-store"},
     )
+
+
+# Registered after require_app_unlock so it wraps it and also covers locked 401 responses.
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
 
 
 def _model_name() -> str:
