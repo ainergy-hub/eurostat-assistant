@@ -100,8 +100,11 @@ own machine you can skip the password with `APP_ALLOW_UNLOCKED=true`. Never do t
 other people can reach.
 
 **Access from other machines.** By default only your own computer can open the app. Set
-`HOST=0.0.0.0` to allow access from your network. Behind a reverse proxy, set
-`FORWARDED_ALLOW_IPS` to the proxy's address.
+`HOST=0.0.0.0` to allow access from your network. Behind a reverse proxy, including in Docker, set
+`FORWARDED_ALLOW_IPS` to the proxy's address to trust its headers. Otherwise every request appears
+to come from the proxy, so all users share one unlock limit. Never set it to `*` on a server
+clients can reach directly: they could then fake their address and get past the per-address unlock
+limit.
 
 ### Optional: feedback form
 
