@@ -1,5 +1,6 @@
 export const RECENT_MESSAGE_LIMIT = 6;
 export const SUMMARY_LIMIT = 2400;
+export const HISTORY_MESSAGE_LIMIT = 20000;
 export const CHAT_LOG_SCHEMA_VERSION = 2;
 export const CHAT_TITLE_MAX_LENGTH = 40;
 export const CHAT_TITLE_MAX_WORDS = 6;
@@ -68,10 +69,17 @@ export function buildContextSummary(messages) {
   return `Earlier investigation summary:\n${selected.join("\n")}`.slice(0, SUMMARY_LIMIT);
 }
 
+function historyContent(content) {
+  const text = String(content || "");
+  if (text.length <= HISTORY_MESSAGE_LIMIT) return text;
+  // Drop a dangling high surrogate so the truncated text stays valid UTF-16.
+  return `${text.slice(0, HISTORY_MESSAGE_LIMIT - 1).replace(/[\uD800-\uDBFF]$/, "")}…`;
+}
+
 export function recentHistory(messages) {
   return messages
     .slice(-RECENT_MESSAGE_LIMIT)
-    .map(({ role, content }) => ({ role, content }));
+    .map(({ role, content }) => ({ role, content: historyContent(content) }));
 }
 
 export function latestDataResult(messages) {
@@ -172,4 +180,15 @@ export function buildChatLog(
       events,
     },
   };
+}
+
+// Leave room below the 4 MB API limit for the next prompt and model selection.
+export function shouldSuggestNewChat(messages) {
+  if (messages.filter((message) => message.role === "user").length >= 10) return true;
+  const context = {
+    history: recentHistory(messages),
+    summary: buildContextSummary(messages),
+    context_result: latestDataResult(messages),
+  };
+  return new TextEncoder().encode(JSON.stringify(context)).byteLength >= 3_000_000;
 }

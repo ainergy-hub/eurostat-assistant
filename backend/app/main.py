@@ -15,7 +15,7 @@ import time
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request as UrlRequest, urlopen
@@ -98,6 +98,19 @@ FEEDBACK_CATEGORIES = (
 )
 MAX_FEEDBACK_CHARACTERS = 5_000
 MAX_CHAT_LOG_BYTES = 1_000_000
+# Whole JSON bodies for /api/ routes. A follow-up chat request carries up to five tables of
+# MAX_RESULT_ROWS rows (the result plus one per fetched dataset); this leaves headroom for that
+# and for a feedback chat log of MAX_CHAT_LOG_BYTES.
+MAX_REQUEST_BODY_BYTES = 4_000_000
+# Assistant answers are replayed as history. The browser truncates longer answers to this limit.
+MAX_HISTORY_MESSAGE_CHARACTERS = 20_000
+# Bounds for structured results. They apply both to agent output and to the context_result the
+# browser sends back, so every published result stays reusable on the next turn.
+MAX_RESULT_TEXT_CHARACTERS = 1_000
+MAX_SOURCE_URL_CHARACTERS = 64_000
+MAX_RESULT_FIELDS = 64
+MAX_RESULT_SOURCES = TOOL_CALL_LIMITS["fetch_eurostat"]
+MAX_RESULT_WARNINGS = 20
 AIRTABLE_ATTACHMENT_FIELD = "Chat log attachment"
 AIRTABLE_ENVIRONMENT_VARIABLES = (
     "AIRTABLE_ACCESS_TOKEN",
@@ -247,6 +260,49 @@ class UnlockThrottle:
 unlock_throttle = UnlockThrottle()
 
 
+def _request_too_large_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=413,
+        content={"detail": "Request body is too large."},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+class RequestBodyLimitMiddleware:
+    """Reject /api/ request bodies above MAX_REQUEST_BODY_BYTES, declared or streamed."""
+
+    def __init__(self, app: Any, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+            await self.app(scope, receive, send)
+            return
+        content_length = dict(scope["headers"]).get(b"content-length", b"")
+        if content_length.isdigit() and int(content_length) > self.max_bytes:
+            await _request_too_large_response()(scope, receive, send)
+            return
+
+        received = 0
+
+        async def limited_receive() -> dict[str, Any]:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise HTTPException(status_code=413, detail="Request body is too large.")
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+
+# Register before the lock middleware so this sits inside it: a 413 raised while FastAPI reads
+# the body must reach FastAPI's exception handling without crossing BaseHTTPMiddleware.
+app.add_middleware(RequestBodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
+
+
 @app.middleware("http")
 async def require_app_unlock(request: Request, call_next):
     path = request.url.path
@@ -316,21 +372,30 @@ def _resolve_request_model(model: str | None) -> str:
     return selected
 
 
+ResultText = Annotated[str, Field(max_length=MAX_RESULT_TEXT_CHARACTERS)]
+ResultCell = ResultText | int | float | bool | None
+ResultRow = Annotated[dict[ResultText, ResultCell], Field(max_length=MAX_RESULT_FIELDS)]
+ResultFilters = Annotated[
+    dict[ResultText, Annotated[list[ResultText], Field(max_length=MAX_ESTIMATED_CELLS)]],
+    Field(max_length=MAX_RESULT_FIELDS),
+]
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=MAX_HISTORY_MESSAGE_CHARACTERS)
 
 
 class DatasetInfo(BaseModel):
-    code: str
-    title: str
-    updated: str | None = None
-    source_url: str
+    code: ResultText
+    title: ResultText
+    updated: ResultText | None = None
+    source_url: str = Field(max_length=MAX_SOURCE_URL_CHARACTERS)
 
 
 class ColumnInfo(BaseModel):
-    key: str
-    label: str
+    key: ResultText
+    label: ResultText
 
 
 class ChartIntent(BaseModel):
@@ -354,15 +419,15 @@ class ChartIntent(BaseModel):
         "change",
     ] | None = None
     orientation: Literal["horizontal", "vertical"] | None = None
-    x: str | None = None
-    y: str | None = None
-    color: str | None = None
-    size: str | None = None
-    x_label: str | None = None
-    y_label: str | None = None
-    series: str | None = None
-    label: str | None = None
-    title: str | None = None
+    x: ResultText | None = None
+    y: ResultText | None = None
+    color: ResultText | None = None
+    size: ResultText | None = None
+    x_label: ResultText | None = None
+    y_label: ResultText | None = None
+    series: ResultText | None = None
+    label: ResultText | None = None
+    title: ResultText | None = None
     stack: Literal["none", "stacked", "normalize"] = "none"
     sort: Literal["natural", "ascending", "descending"] = "natural"
     top_n: int | None = Field(default=None, ge=1, le=50)
@@ -374,21 +439,23 @@ class ChartIntent(BaseModel):
 
 class SourceTable(BaseModel):
     dataset: DatasetInfo
-    filters: dict[str, list[str]]
-    columns: list[ColumnInfo]
-    rows: list[dict[str, Any]] = Field(max_length=500)
-    warnings: list[str] = Field(default_factory=list)
+    filters: ResultFilters
+    columns: list[ColumnInfo] = Field(max_length=MAX_RESULT_FIELDS)
+    rows: list[ResultRow] = Field(max_length=MAX_RESULT_ROWS)
+    warnings: list[ResultText] = Field(default_factory=list, max_length=MAX_RESULT_WARNINGS)
 
 
 class DataResult(BaseModel):
     dataset: DatasetInfo
-    sources: list[DatasetInfo] = Field(default_factory=list)
-    source_tables: list[SourceTable] = Field(default_factory=list)
-    filters: dict[str, list[str]]
-    columns: list[ColumnInfo]
-    rows: list[dict[str, Any]] = Field(max_length=500)
+    sources: list[DatasetInfo] = Field(default_factory=list, max_length=MAX_RESULT_SOURCES)
+    source_tables: list[SourceTable] = Field(
+        default_factory=list, max_length=MAX_RESULT_SOURCES
+    )
+    filters: ResultFilters
+    columns: list[ColumnInfo] = Field(max_length=MAX_RESULT_FIELDS)
+    rows: list[ResultRow] = Field(max_length=MAX_RESULT_ROWS)
     chart: ChartIntent
-    warnings: list[str] = Field(default_factory=list)
+    warnings: list[ResultText] = Field(default_factory=list, max_length=MAX_RESULT_WARNINGS)
 
 
 class ChatRequest(BaseModel):

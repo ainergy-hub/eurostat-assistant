@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import {
   CHAT_LOG_SCHEMA_VERSION,
   CHAT_TITLE_MAX_LENGTH,
+  HISTORY_MESSAGE_LIMIT,
   SUMMARY_LIMIT,
   buildChatLog,
   buildContextSummary,
   latestDataResult,
   latestUnansweredFailure,
   recentHistory,
+  shouldSuggestNewChat,
   shortChatTitle,
   titleFromPrompt,
 } from "../static/chat_state.js";
@@ -30,6 +32,16 @@ const history = recentHistory(messages);
 assert.equal(history.length, 6);
 assert.equal(history[0].content, "Question 4");
 assert.deepEqual(Object.keys(history[0]), ["role", "content"]);
+
+const longAnswer = `${"a".repeat(HISTORY_MESSAGE_LIMIT - 2)}😀${"b".repeat(50)}`;
+const [truncatedAnswer] = recentHistory([{ role: "assistant", content: longAnswer }]);
+assert.ok(truncatedAnswer.content.length <= HISTORY_MESSAGE_LIMIT);
+assert.ok(truncatedAnswer.content.endsWith("a…"));
+assert.equal(
+  recentHistory([{ role: "assistant", content: "a".repeat(HISTORY_MESSAGE_LIMIT) }])[0].content
+    .length,
+  HISTORY_MESSAGE_LIMIT,
+);
 assert.equal(latestDataResult(messages).dataset.code, "demo_pjan");
 assert.equal(latestDataResult([{ role: "user", content: "No chart yet" }]), null);
 
@@ -152,3 +164,14 @@ assert.equal(log.investigation.events[0].type, "request_error");
 assert.equal(log.investigation.events[0].model, "openai/gpt-5.6-luna-pro");
 
 console.log("chat state tests passed");
+
+assert.equal(shouldSuggestNewChat([]), false);
+assert.equal(shouldSuggestNewChat(Array.from({ length: 9 }, () => ({ role: "user", content: "Question" }))), false);
+assert.equal(shouldSuggestNewChat(Array.from({ length: 10 }, () => ({ role: "user", content: "Question" }))), true);
+// UTF-8 bytes, rather than JavaScript string length, determine the API body size.
+assert.equal(shouldSuggestNewChat([{ role: "assistant", content: "Result", result: {
+  rows: [{ label: "界".repeat(1_000_000) }],
+} }]), true);
+assert.equal(shouldSuggestNewChat([{ role: "assistant", content: "Result", result: {
+  rows: [{ label: "small table" }],
+} }]), false);
