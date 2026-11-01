@@ -32,6 +32,17 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Make the skill harness-neutral
+
+- **Changed:** `skill/SKILL.md`, the helper's docstring, and its HTTP `User-Agent`
+  (`eurostat-assistant-skill/1.0`) no longer name Codex. The README's quick start now explains how
+  to install the skill in Claude Code, Codex, the Claude apps, other skill-aware harnesses, or any
+  agent that can read `SKILL.md` and run a shell command.
+- **Reasoning:** The skill only depends on Python and the Eurostat API, and its host-specific
+  steps (`publish_result`) are already conditional. Calling it a Codex skill kept people using
+  other harnesses from installing it. `agents/openai.yaml` stays as optional Codex display metadata.
+- **Validation/impact:** Text and metadata only; no behavior change.
+
 ### Throttle failed app unlock attempts
 
 - **Changed:** `POST /api/auth/unlock` allows 5 failed attempts per client address and 50 across

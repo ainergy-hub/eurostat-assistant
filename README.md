@@ -4,8 +4,9 @@ Ask a question in plain language and get an answer built from current Eurostat d
 dataset code, filters, and API URL attached so you can check it. The repository has two parts, and
 each works without the other:
 
-- The `fetch-eurostat-data` Codex skill and its CLI helper, which find datasets, list their
-  dimensions, and fetch filtered observations. You can use this separately by installing it in your harness as a skill. 
+- The `fetch-eurostat-data` agent skill and its CLI helper, which find datasets, list their
+  dimensions, and fetch filtered observations. Install it as a skill in any agent harness (see
+  [B. Quick start](#b-quick-start-agent-skill)).
 - A reference web app where you chat with an agent. It answers with sources, a chart, a filterable
   table, and a CSV download.
 
@@ -120,16 +121,39 @@ The feedback form sends submissions to an Airtable table. To turn it on:
 
 A user's chat log is attached only if they choose to include it.
 
-## B. Quick start: Codex skill
+## B. Quick start: agent skill
 
-Copy the skill into your Codex skills folder:
+`skill/` is a plain [Agent Skills](https://agentskills.io) folder: a `SKILL.md` with YAML
+frontmatter, plus scripts and reference notes. It isn't tied to one tool. Any harness that loads
+skills can use it, and any other agent can use it if you give it `SKILL.md` as instructions. The
+only requirements are `python3` (standard library only) and network access to
+`ec.europa.eu`.
+
+Copy the folder into your harness's skills directory under the name `fetch-eurostat-data`:
+
+| Harness | Install location |
+| --- | --- |
+| Claude Code | `~/.claude/skills/fetch-eurostat-data` (all projects) or `.claude/skills/fetch-eurostat-data` (one project) |
+| Codex | `~/.codex/skills/fetch-eurostat-data` |
+| Claude apps (claude.ai, desktop) | Zip the folder and upload it under Settings → Capabilities → Skills |
+| Other skill-aware harnesses | That harness's skills folder |
+
+For example, in Claude Code:
 
 ```bash
-mkdir -p ~/.codex/skills
-cp -R skill ~/.codex/skills/fetch-eurostat-data
+mkdir -p ~/.claude/skills
+cp -R skill ~/.claude/skills/fetch-eurostat-data
 ```
 
-Reload Codex and ask it to use `$fetch-eurostat-data`.
+Reload the harness and ask a Eurostat question, or name the skill directly (`/fetch-eurostat-data`
+in Claude Code, `$fetch-eurostat-data` in Codex).
+
+If your agent doesn't support skills, add the contents of `skill/SKILL.md` to its instructions and
+let it run `skill/scripts/eurostat_api.py` from a shell.
+
+Two files are optional extras. `agents/openai.yaml` holds display metadata that Codex reads and
+other harnesses ignore. `agent_limits.json` holds the web app's runtime limits. The helper reads
+it when present and uses the same built-in defaults when it's missing.
 
 You can also run the helper yourself from `skill/`:
 
@@ -188,7 +212,7 @@ current Content-Security-Policy blocks. Verify the documentation renders under t
 ## Development
 
 ```text
-skill/                   The fetch-eurostat-data Codex skill, also loaded by the server
+skill/                   The fetch-eurostat-data agent skill, also loaded by the server
   SKILL.md               Skill instructions, also the agent's system prompt
   scripts/               eurostat_api.py CLI helper
   references/            API and chart-selection notes
