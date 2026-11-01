@@ -32,6 +32,17 @@ Suggested entry shape:
 
 ## Unreleased
 
+### Version the skill and add release notes for 0.3.0
+
+- **Changed:** The skill now has its own version, starting at 0.3.0: `metadata.version` in the
+  `SKILL.md` frontmatter and `__version__` in `eurostat_api.py`, which also sets the helper's
+  `User-Agent` and a new `--version` flag. Added `RELEASE_NOTES.md` for the 0.3.0 release.
+- **Reasoning:** People install the skill without the web app, so they need a way to tell which
+  version they have. The two versions can diverge later; the frontmatter uses the Agent Skills
+  `metadata` field so harnesses that don't know it ignore it.
+- **Validation/impact:** A new test checks that the frontmatter and helper versions match. When
+  releasing the skill, bump both.
+
 ### Make the skill harness-neutral
 
 - **Changed:** `skill/SKILL.md`, the helper's docstring, and its HTTP `User-Agent`

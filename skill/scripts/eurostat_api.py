@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 
+__version__ = "0.3.0"
 BASE = "https://ec.europa.eu/eurostat/api/dissemination"
 TOC_URL = f"{BASE}/catalogue/toc/txt?lang=en"
 DATA_URL = f"{BASE}/statistics/1.0/data"
@@ -86,7 +87,7 @@ DIMENSION_MATCH_QUERY_EXPANSIONS = {
 
 
 def get_text(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": "eurostat-assistant-skill/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": f"eurostat-assistant-skill/{__version__}"})
     try:
         with urllib.request.urlopen(req, timeout=45) as response:
             content_length = response.headers.get("Content-Length")
@@ -717,6 +718,7 @@ def fetch(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search and fetch Eurostat Statistics API data.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     search = sub.add_parser("search", help="Search Eurostat table-of-contents metadata.")
