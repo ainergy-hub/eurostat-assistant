@@ -800,7 +800,16 @@ function appendResponseActions(response, prompt, priorMessages = [], confidence 
       `Confidence: ${normalizedConfidence[0].toUpperCase()}${normalizedConfidence.slice(1)}`,
     );
     label.setAttribute("aria-label", `Answer confidence: ${normalizedConfidence}`);
-    actions.appendChild(label);
+    const infoLink = element("button", "confidence-info");
+    infoLink.type = "button";
+    infoLink.title = "How confidence is determined";
+    infoLink.setAttribute("aria-label", "How confidence is determined");
+    infoLink.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.25v.5"></path></svg>';
+    infoLink.addEventListener("click", openConfidenceInfo);
+    const group = element("span", "confidence-group");
+    group.append(label, infoLink);
+    actions.appendChild(group);
   }
   if (canRetry) {
     const retryButton = element("button", "retry-button");
@@ -1196,6 +1205,13 @@ apiQueryPanel.addEventListener("click", (event) => {
 developmentLink.addEventListener("click", () => showDevelopmentPage());
 infoButton.addEventListener("click", () => aboutDialog.showModal());
 aboutDialogClose.addEventListener("click", () => aboutDialog.close());
+
+function openConfidenceInfo() {
+  aboutDialog.showModal();
+  document
+    .querySelector("#about-confidence")
+    ?.scrollIntoView({ block: "start", behavior: "smooth" });
+}
 aboutDialog.addEventListener("click", (event) => {
   if (event.target === aboutDialog) aboutDialog.close();
 });

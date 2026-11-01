@@ -437,6 +437,13 @@ test("shows a subtle title loader before the parallel AI title completes", async
   }));
   expect(confidenceStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
   expect(confidenceStyle.borderStyle).toBe("none");
+  const confidenceInfo = page.getByRole("button", { name: "How confidence is determined" });
+  await confidenceInfo.click();
+  const confidenceAbout = page.getByRole("dialog", { name: "About this app" });
+  await expect(confidenceAbout.getByRole("heading", { name: "Confidence level" })).toBeInViewport();
+  await expect(confidenceAbout.getByText(/double-check answers against the original/)).toBeVisible();
+  await confidenceAbout.getByRole("button", { name: "Close app information" }).click();
+  await expect(confidenceInfo).toBeFocused();
   await expect(page.getByText("How has Germany's population changed?", { exact: true })).toHaveCount(1);
 
   releaseTitle();

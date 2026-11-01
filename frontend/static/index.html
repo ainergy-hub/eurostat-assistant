@@ -464,8 +464,40 @@
             </li>
           </ol>
         </section>
+        <section class="about-tips about-confidence" id="about-confidence" aria-labelledby="about-confidence-title">
+          <h3 id="about-confidence-title">Confidence level</h3>
+          <p>
+            Each answer ends with a confidence level. The AI model assigns it itself, based on how
+            well the Eurostat data it retrieved supports the answer:
+          </p>
+          <dl class="about-confidence-levels">
+            <div>
+              <dt class="confidence-high">High</dt>
+              <dd>The selected Eurostat data directly and completely supports the answer.</dd>
+            </div>
+            <div>
+              <dt class="confidence-medium">Medium</dt>
+              <dd>
+                The answer depends on a reasonable assumption, proxy, estimate, incomplete coverage,
+                or limited comparison. Medium is also used when the model gives no rating.
+              </dd>
+            </div>
+            <div>
+              <dt class="confidence-low">Low</dt>
+              <dd>
+                Important ambiguity, missing data, incompatible coverage, or a tool failure remains.
+              </dd>
+            </div>
+          </dl>
+          <p>
+            The rating is the model's own judgement, not a statistical measure. A high rating does
+            not guarantee the answer is correct.
+          </p>
+        </section>
         <p class="about-caveat">
-          AI can make mistakes. Check the linked dataset and methodology before relying on a result.
+          AI can make mistakes. It is good practice to double-check answers against the original
+          data source: open the linked Eurostat dataset and its methodology before relying on a
+          result.
         </p>
         <a class="about-source-link" href="https://ec.europa.eu/eurostat/" target="_blank" rel="noreferrer">
           Visit Eurostat <span aria-hidden="true">↗</span>
