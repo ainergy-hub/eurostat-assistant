@@ -5,12 +5,12 @@ dataset code, filters, and API URL attached so you can check it. The repository 
 each works without the other:
 
 - The `fetch-eurostat-data` Codex skill and its CLI helper, which find datasets, list their
-  dimensions, and fetch filtered observations.
+  dimensions, and fetch filtered observations. You can use this separately by installing it in your harness as a skill. 
 - A reference web app where you chat with an agent. It answers with sources, a chart, a filterable
   table, and a CSV download.
 
-It works best for focused questions that one Eurostat dataset can answer.
-**Limitations:** it does not freely combine datasets, draw maps, or have user accounts. It is not a
+It can give answers, but it can best be seen as a discovery tool to investigate datasets in Eurostat.
+It is not a
 replacement for the [Eurostat Data Browser](https://ec.europa.eu/eurostat/databrowser/).
 
 ![Eurostat Assistant homepage with a question box and example investigations](docs/images/app-screenshot.png)
