@@ -1,6 +1,8 @@
 ---
 name: fetch-eurostat-data
 description: Find relevant Eurostat datasets and fetch official Eurostat data for data questions about EU countries, regions, indicators, time series, population, economy, energy, trade, labor, prices, environment, agriculture, transport, and other Eurostat topics. Use when an agent needs to search the Eurostat database, inspect dataset dimensions and codes, call the Eurostat dissemination API, parse JSON-stat data, compare countries or periods, cite dataset codes, or answer a question using fresh Eurostat statistics.
+metadata:
+  version: "0.3.0"
 ---
 
 # Fetch Eurostat Data

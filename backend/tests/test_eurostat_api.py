@@ -26,6 +26,7 @@ from skill.scripts.eurostat_api import (
     get_text,
     match_dimension_categories,
     parse_sdmx_dimensions,
+    __version__,
     rank_catalog,
 )
 
@@ -403,6 +404,12 @@ class EurostatApiTests(unittest.TestCase):
             item["code"] for item in matches[1]["categories"]
         }
         self.assertEqual(manufacturing_codes, {"C10-12", "C20"})
+
+    def test_skill_metadata_version_matches_helper_version(self) -> None:
+        skill_md = (Path(__file__).resolve().parents[2] / "skill" / "SKILL.md").read_text()
+        frontmatter = skill_md.split("\n---\n", 1)[0]
+
+        self.assertIn(f'  version: "{__version__}"', frontmatter)
 
 
 if __name__ == "__main__":
