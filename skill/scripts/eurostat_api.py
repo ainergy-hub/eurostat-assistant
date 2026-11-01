@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small Eurostat Statistics API helper for Codex skills.
+"""Small Eurostat Statistics API helper for the fetch-eurostat-data agent skill.
 
 Commands:
   search "query terms"
@@ -86,7 +86,7 @@ DIMENSION_MATCH_QUERY_EXPANSIONS = {
 
 
 def get_text(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": "codex-eurostat-skill/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "eurostat-assistant-skill/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=45) as response:
             content_length = response.headers.get("Content-Length")
