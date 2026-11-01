@@ -1794,6 +1794,38 @@ tbody tr:last-child td {
   letter-spacing: 0.02em;
 }
 
+.confidence-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.confidence-info {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.confidence-info svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.confidence-info:hover,
+.confidence-info:focus-visible {
+  color: var(--color-accent-dim);
+}
+
 .confidence-high {
   color: var(--color-good);
 }
@@ -2741,6 +2773,42 @@ footer a:hover {
 
 .about-tips li {
   padding-left: var(--space-1);
+}
+
+.about-confidence {
+  display: grid;
+  gap: var(--space-3);
+  scroll-margin-top: var(--space-4);
+}
+
+.about-confidence h3 {
+  margin: 0;
+}
+
+.about-confidence p {
+  margin: 0;
+}
+
+.about-confidence-levels {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.about-confidence-levels > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.about-confidence-levels dt {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.about-confidence-levels dd {
+  margin: 0;
 }
 
 .about-caveat {
